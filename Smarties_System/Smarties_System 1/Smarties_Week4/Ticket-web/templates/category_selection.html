@@ -1,0 +1,105 @@
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <style>
+        body {
+            font-family: var(--font-sans);
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            color: var(--text-main);
+            background-color: var(--bg-app);
+            transition: all 0.3s ease;
+        }
+        [data-theme="dark"] .info { border-left-color: var(--primary); }
+        [data-theme="dark"] label { background-color: rgba(255,255,255,0.02); }
+        .container {
+            border: 1px solid var(--border-dim);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: var(--shadow-lg);
+            background: var(--bg-card);
+            transition: all 0.3s ease;
+        }
+        h1 { color: var(--text-main); font-size: 24px; font-weight: 700; margin-bottom: 20px; }
+        .error { color: var(--error); margin-bottom: 20px; font-weight: 600; }
+        .info {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-top: 15px;
+            padding: 15px;
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--bg-app);
+        }
+        label:hover {
+            border-color: var(--border-focus);
+            background-color: var(--bg-card);
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        button {
+            margin-top: 25px;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        button:hover { background-color: var(--primary-hover); transform: translateY(-1px); }
+        a {
+            display: inline-block;
+            margin-top: 20px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Department Selection</h1>
+        
+        <div class="info">
+            <p>We couldn't automatically categorize your issue. Please select one or more departments that best match your request:</p>
+        </div>
+
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+
+        <form action="/select_category" method="POST">
+            {% for dept in departments %}
+                <label>
+                    <input type="checkbox" name="category" value="{{ dept }}">
+                    <strong>{{ dept }}</strong>
+                </label>
+            {% endfor %}
+            
+            <button type="submit">Submit</button>
+        </form>
+
+        <a href="/">Cancel</a>
+    </div>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smarties System - Audit Logs</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            transition: all 0.3s ease;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border-radius: 16px;
+            box-shadow: var(--shadow-xl);
+            padding: 40px;
+            border: 1px solid var(--border-dim);
+            transition: all 0.3s ease;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h2 i { color: var(--primary); }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid var(--border-dim);
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateX(-5px);
+        }
+
+        /* TABS */
+        .tabs-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-dim);
+            padding-bottom: 1px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-muted);
+            border-radius: 10px 10px 0 0;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            margin-bottom: -1px;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-bottom-color: var(--bg-card);
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.02);
+        }
+
+        /* TABLE STYLES */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border-dim);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 20px 16px;
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 13px;
+            vertical-align: middle;
+        }
+        
+        th {
+            background-color: var(--bg-app);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            white-space: nowrap;
+        }
+        
+        tr:last-child td { border-bottom: none; }
+        
+        tr:hover { background-color: rgba(59, 130, 246, 0.02); }
+
+        /* BADGES & LABELS */
+        .action-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        .action-INSERT { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .action-UPDATE { background: rgba(156, 163, 175, 0.1); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.2); }
+        .action-DELETE { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .action-RESTORE { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); }
+        .action-LOGIN { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+
+        .entity-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-dim);
+            white-space: nowrap;
+        }
+
+        .entity-ticket { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
+        .entity-user { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
+
+        .security-alert {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            color: #ef4444;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(239, 68, 68, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+
+        .old-value, .new-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 2px 0;
+            width: 100%;
+            border: 1px solid var(--border-dim);
+            transition: all 0.2s;
+        }
+
+        .old-value:hover, .new-value:hover {
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .value-label {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 9px;
+            padding: 0;
+            border-radius: 0;
+            letter-spacing: 0.5px;
+        }
+
+        .label-old { background: transparent; color: #ef4444; }
+        .label-new { background: transparent; color: #10b981; }
+
+        .value-content { color: var(--text-main); font-weight: 500; }
+
+        .performer {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .restore-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .restore-btn:hover { background: var(--primary-hover); transform: scale(1.05); }
+
+        .no-logs {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-muted);
+        }
+        
+        [data-theme="dark"] tr:hover { background-color: rgba(255, 100, 100, 0.05); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h2><i class="fa-solid fa-clipboard-check"></i> System Audit Log</h2>
+            <a href="{{ url_for('dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+        </header>
+
+        <div class="tabs-container">
+            <div class="tab active" onclick="switchTab('all', this)">All Activity</div>
+            <div class="tab" onclick="switchTab('tickets', this)">Ticket Lifecycle</div>
+            <div class="tab" onclick="switchTab('users', this)">User Security Activity</div>
+        </div>
+
+        <div class="table-wrapper">
+            {% if logs %}
+                <table id="logsTable">
+                    <thead>
+                        <tr>
+                            <th id="headerCol1">Time</th>
+                            <th>Action</th>
+                            <th>Entity / Record</th>
+                            <th>Performed By</th>
+                            <th>Details (Old -> New)</th>
+                            <th id="headerColManage">Manage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                            <tr class="log-row" data-table="{{ log['table_name'] }}">
+                                <td style="white-space:nowrap; padding: 20px 16px;">
+                                    <div style="font-size:11px; color:var(--text-muted); font-family: 'JetBrains Mono', monospace;">{{ log['timestamp'] }}</div>
+                                </td>
+                                <td>
+                                    <span class="action-badge action-{{ log['action'] }}">{{ log['action'] }}</span>
+                                    {% if log['table_name'] == 'users' and log['action'] != 'LOGIN' %}
+                                        <div class="security-alert"><i class="fa-solid fa-shield-halved"></i> SECURITY</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log['table_name'] == 'tickets' %}
+                                        <span class="entity-label entity-ticket"><i class="fa-solid fa-ticket"></i> TKT-{{ log['record_id'] }}</span>
+                                    {% else %}
+                                        <span class="entity-label entity-user"><i class="fa-solid fa-user-shield"></i> USER</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="performer">{{ log['performed_by'] }}</span></td>
+                                <td>
+                                    <div style="display:flex; flex-direction:column; gap:4px; min-width: 250px;">
+                                        {% if log['action'] == 'LOGIN' %}
+                                            <div class="new-value">
+                                                <span class="value-label label-new">NEW:</span>
+                                                <span class="value-content">User logged in</span>
+                                            </div>
+                                        {% elif log['action'] == 'INSERT' and log['table_name'] == 'tickets' %}
+                                            <div class="new-value">
+                                                <span class="value-label label-new">NEW:</span>
+                                                <span class="value-content">Ticket submitted</span>
+                                            </div>
+                                        {% elif log['action'] == 'DELETE' and log['table_name'] == 'tickets' %}
+                                            <div class="old-value">
+                                                <span class="value-label label-old">OLD:</span>
+                                                <span class="value-content">Ticket deleted</span>
+                                            </div>
+                                        {% else %}
+                                            {% if log['old_value'] and log['old_value'] != 'None' and log['old_value'] != '' %}
+                                                <div class="old-value">
+                                                    <span class="value-label label-old">OLD:</span>
+                                                    {% if log['old_value'].strip().startswith('{') %}
+                                                        <span class="value-content">Ticket details</span>
+                                                    {% else %}
+                                                        <span class="value-content">{{ log['old_value'].replace('S:', '').replace('S: ', '').split(', C:')[0] }}</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                            {% if log['new_value'] and log['new_value'] != 'None' and log['new_value'] != '' %}
+                                                <div class="new-value">
+                                                    <span class="value-label label-new">NEW:</span>
+                                                    {% if log['new_value'].strip().startswith('{') %}
+                                                        <span class="value-content">Details updated</span>
+                                                    {% else %}
+                                                        <span class="value-content">{{ log['new_value'].replace('S:', '').replace('S: ', '').split(', C:')[0] }}</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if log['action'] == 'DELETE' and log['table_name'] == 'tickets' %}
+                                        <form method="POST" action="{{ url_for('restore_ticket', log_id=log['id']) }}" onsubmit="return confirm('Restore this ticket?')">
+                                            <button type="submit" class="restore-btn">
+                                                <i class="fas fa-undo"></i> Restore
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <span style="color:var(--text-muted); font-size:11px;">N/A</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="no-logs">
+                    <i class="fa-solid fa-folder-open fa-3x" style="opacity:0.2; margin-bottom:15px;"></i>
+                    <p>No audit logs found.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function switchTab(type, el) {
+            // Update tabs UI
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+
+            // Update Header Text & Visibility
+            const headerCol1 = document.getElementById('headerCol1');
+            const headerColManage = document.getElementById('headerColManage');
+            
+            if (type === 'users') {
+                headerCol1.innerText = 'Time';
+                headerColManage.style.display = 'none';
+            } else {
+                headerCol1.innerText = 'Time';
+                headerColManage.style.display = '';
+            }
+
+            // Filter table rows
+            const rows = document.querySelectorAll('.log-row');
+            rows.forEach(row => {
+                const tableContext = row.getAttribute('data-table');
+                const manageCell = row.cells[row.cells.length - 1];
+
+                // Handle common tab filtering
+                let showRow = false;
+                if (type === 'all') showRow = true;
+                else if (type === 'tickets' && tableContext === 'tickets') showRow = true;
+                else if (type === 'users' && tableContext === 'users') showRow = true;
+
+                if (showRow) {
+                    row.style.display = '';
+                    // Handle Manage column cell visibility
+                    manageCell.style.display = (type === 'users') ? 'none' : '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    </script>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body>
+</html>

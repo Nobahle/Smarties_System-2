@@ -1,0 +1,334 @@
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            transition: all 0.3s ease;
+            padding: 20px;
+        }
+        [data-theme="dark"] .ticket-text { border-color: var(--primary); }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: var(--shadow-lg);
+            padding: 40px;
+            border: 1px solid var(--border-dim);
+            transition: all 0.3s ease;
+        }
+        h2 { color: var(--text-main); margin-bottom: 30px; text-align: center; font-size: 24px; font-weight: 700; }
+        
+        .ticket-item {
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            background-color: var(--bg-app);
+            transition: all 0.3s ease;
+        }
+        .ticket-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }
+        .ticket-id {
+            background-color: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-badge { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-open { background-color: rgba(245, 158, 11, 0.15); color: #b45309; }
+        .status-inprogress { background-color: rgba(59, 130, 246, 0.15); color: #1d4ed8; }
+        .status-closed { background-color: rgba(16, 185, 129, 0.15); color: #065f46; }
+
+        .ticket-text { color: var(--text-main); margin: 12px 0; padding: 15px; background: var(--bg-surface); border-radius: 8px; border-left: 4px solid var(--primary); font-size: 14px; line-height: 1.6; }
+        .ticket-meta { color: var(--text-muted); font-size: 12px; margin: 12px 0; opacity: 0.8; }
+        .delete-btn {
+            background: var(--error) !important; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .delete-btn:hover { opacity: 0.9; transform: translateY(-1px); background: #b91c1c !important; }
+        
+        .update-btn {
+            background: var(--primary) !important; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .update-btn:hover { opacity: 0.9; transform: translateY(-1px); background: var(--primary-hover) !important; }
+        
+        .no-tickets {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+        
+        .back-btn {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .back-btn:hover { background-color: var(--primary-hover); transform: translateY(-1px); }
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            margin: -20px -20px 30px;
+            border-radius: 0;
+        }
+        [data-theme="dark"] header {
+            background: linear-gradient(135deg, #111827 0%, var(--bg-card) 100%);
+        }
+
+        /* PREMIUM MODAL STYLES */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.show { opacity: 1; visibility: visible; }
+        .modal-card {
+            background: var(--bg-card);
+            width: 90%;
+            max-width: 480px;
+            padding: 40px;
+            border-radius: 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            transform: translateY(30px);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: 1px solid var(--border-dim);
+        }
+        .modal-overlay.show .modal-card { transform: translateY(0); }
+        .modal-icon-container {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 24px;
+        }
+        .modal-icon-container i { font-size: 40px; }
+        .modal-status {
+            font-weight: 800; font-size: 14px;
+            letter-spacing: 0.1em; margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+        .modal-title { font-size: 18px; font-weight: 700; color: var(--text-main); margin-bottom: 12px; }
+        .modal-message { color: var(--text-muted); font-size: 15px; margin-bottom: 30px; }
+        .modal-btn {
+            color: white; border: none; padding: 14px 48px;
+            border-radius: 12px; font-weight: 700; font-size: 15px;
+            cursor: pointer; transition: all 0.2s; width: 100%;
+        }
+        .modal-btn:hover { transform: translateY(-2px); }
+        
+        .modal-delete .modal-icon-container { background: rgba(239, 68, 68, 0.1); }
+        .modal-delete .modal-icon-container i { color: #ef4444; }
+        .modal-delete .modal-status { color: #ef4444; }
+        .modal-delete .modal-btn { background: #ef4444; }
+        .modal-delete .modal-btn:hover { background: #dc2626; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+        
+        .modal-btn-secondary {
+            background: var(--bg-surface);
+            color: var(--text-main);
+            border: 1px solid var(--border-dim);
+            padding: 14px 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .modal-btn-secondary:hover { background: var(--border-dim); }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{{ url_for('dashboard') }}" class="nav-brand" style="font-size: 20px; font-weight: 700; color: white; text-decoration: none; display: flex; align-items: center; gap: 10px;">
+            <i class="fa-solid fa-rocket"></i> Smarties System
+        </a>
+        <div style="display:flex; align-items:center; gap:20px;">
+            <a href="{{ url_for('dashboard') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">Dashboard</a>
+            <a href="{{ url_for('notifications') }}" style="background: rgba(255,255,255,0.15); position: relative; color: white; padding: 8px 15px; border-radius: 8px; text-decoration: none;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
+            </a>
+            <a href="{{ url_for('logout') }}" style="background: rgba(255,255,255,0.15); color: white; padding: 8px 15px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px;">Logout</a>
+        </div>
+    </header>
+
+    <div class="container">
+        {% if session.pop('show_delete_modal', None) %}
+        <div id="deleteSuccessModalOverlay" class="modal-overlay modal-delete">
+            <div class="modal-card">
+                <div class="modal-icon-container">
+                    <i class="fa-solid fa-trash-can"></i>
+                </div>
+                <div class="modal-status">DELETED</div>
+                <div class="modal-title">Ticket Removed Successfully.</div>
+                <div class="modal-message">
+                    The ticket has been permanently removed from the active queue.
+                </div>
+                <button class="modal-btn" onclick="closeDeleteSuccessModal()">Continue</button>
+            </div>
+        </div>
+        <script>
+            window.addEventListener('load', () => {
+                const overlay = document.getElementById('deleteSuccessModalOverlay');
+                if (overlay) {
+                    setTimeout(() => overlay.classList.add('show'), 300);
+                }
+            });
+            function closeDeleteSuccessModal() {
+                const overlay = document.getElementById('deleteSuccessModalOverlay');
+                if (overlay) {
+                    overlay.classList.remove('show');
+                    setTimeout(() => overlay.remove(), 300);
+                }
+            }
+        </script>
+        {% endif %}
+
+        <h2>{% if session.role == 'admin' %}All Tickets{% else %}My Tickets{% endif %}</h2>
+
+        {% if error %}
+            <div class="no-tickets" style="color:red;">Error: {{ error }}</div>
+        {% endif %}
+
+        {% if tickets %}
+            {% for t in tickets %}
+                <div class="ticket-item">
+                    <div class="ticket-header">
+                        <span class="ticket-id">Ticket #{{ t['id'] }}</span>
+
+                        <div>
+                            <span class="status-badge
+                                {% if t['status'] == 'Open' %}status-open
+                                {% elif t['status'] == 'Closed' %}status-closed
+                                {% else %}status-inprogress
+                                {% endif %}">
+                                {{ t['status'] }}
+                            </span>
+
+                            {% if session.role == 'admin' %}
+                            <form method="POST" action="{{ url_for('update_status', ticket_id=t['id']) }}" style="display:inline; margin-right: 8px;">
+                                <select name="status" style="padding: 7px; border-radius: 6px; border: 1px solid var(--border-dim); background: var(--bg-input); color: var(--text-main); font-size: 12px; outline: none;">
+                                    <option value="Open" {% if t['status']=='Open' %}selected{% endif %}>Open</option>
+                                    <option value="In Progress" {% if t['status']=='In Progress' %}selected{% endif %}>In Progress</option>
+                                    <option value="Closed" {% if t['status']=='Closed' %}selected{% endif %}>Closed</option>
+                                </select>
+                                <button type="submit" class="update-btn">Update</button>
+                            </form>
+                            {% endif %}
+
+                            <button type="button" class="delete-btn" onclick="openDeleteConfirm('{{ t['id'] }}', '{{ url_for('delete_ticket', ticket_id=t['id']) }}')">Delete</button>
+                        </div>
+                    </div>
+
+                    <div class="ticket-meta">
+                        {% if session.role == 'admin' %}<strong>By:</strong> {{ t['sender_name'] }} |{% endif %}
+                        <strong>Category:</strong> {{ t['category'] }} |
+                        <strong>Priority:</strong> {{ t['priority_level'] or 'Normal' }} |
+                        <strong>Created:</strong> {{ t['created_at'] }}
+                    </div>
+
+                    <div class="ticket-text">
+                        <strong>Issue:</strong><br>
+                        {{ t['ticket_text'] }}
+                    </div>
+
+                    <div class="ticket-meta">
+                        <strong>Assigned To:</strong> {{ t['agent_name'] or 'Auto-Queue' }} |
+                        <strong>Status Detail:</strong> 
+                        {% if t['requires_approval'] == 1 and t['is_approved'] == 0 %}
+                            <span style="color:#f59e0b;">Awaiting Approval</span>
+                        {% else %}
+                            <span style="color:#10b981;">Automated Processing Complete</span>
+                        {% endif %}
+                        <br><br>
+                        <strong>AI Response:</strong> {{ t['response'] }}
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-tickets">
+                <p>No tickets found.</p>
+            </div>
+        {% endif %}
+
+        <a href="{{ url_for('dashboard') }}" class="back-btn">Back to Dashboard</a>
+    </div>
+    <script>
+        function checkNotifications() {
+            fetch("{{ url_for('api_unread_notifications') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notification-badge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.innerText = data.count > 99 ? '99+' : data.count;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+        checkNotifications();
+        setInterval(checkNotifications, 10000);
+    </script>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="deleteConfirmModal" class="modal-overlay modal-delete">
+        <div class="modal-card">
+            <div class="modal-icon-container">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="modal-status">CONFIRMATION</div>
+            <div class="modal-title">Delete Ticket #<span id="confirmTicketId"></span>?</div>
+            <div class="modal-message">
+                Are you sure you want to delete this ticket? This action cannot be undone.
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <form id="deleteConfirmForm" method="POST" action="">
+                    <button type="submit" class="modal-btn">Yes, Delete It</button>
+                </form>
+                <button class="modal-btn-secondary" onclick="closeDeleteConfirm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openDeleteConfirm(ticketId, deleteUrl) {
+            document.getElementById('confirmTicketId').innerText = ticketId;
+            document.getElementById('deleteConfirmForm').action = deleteUrl;
+            document.getElementById('deleteConfirmModal').classList.add('show');
+        }
+
+        function closeDeleteConfirm() {
+            document.getElementById('deleteConfirmModal').classList.remove('show');
+        }
+    </script>
+</body>
+</html>

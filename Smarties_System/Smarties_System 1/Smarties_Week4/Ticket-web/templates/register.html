@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smarties System - Register</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <style>
+        :root {
+            /* Inherit from theme.css */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-sans);
+            /* background: linear-gradient(135deg, var(--bg-app) 0%, var(--bg-card) 100%); */
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: var(--text-main);
+            transition: all 0.35s ease;
+        }
+        
+        .register-container {
+            background: var(--bg-card);
+            border-radius: 18px;
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 420px;
+            padding: 42px;
+            border: 1px solid var(--border-dim);
+            transition: all 0.35s ease;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            color: var(--text-main);
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        label {
+            color: var(--text-muted);
+        }
+        
+        .logo p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            background: var(--bg-input);
+            color: var(--text-main);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+        }
+        
+        .error {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border-left: 4px solid var(--error);
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-md);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Password Requirements Styling */
+        .requirements-checklist {
+            margin-top: 10px;
+            padding: 12px;
+            background: var(--bg-app);
+            border-radius: 10px;
+            border: 1px solid var(--border-dim);
+            font-size: 12px;
+            display: none; /* Hidden by default, shown on focus */
+        }
+        
+        .requirement {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+        }
+        
+        .requirement:last-child { margin-bottom: 0; }
+        
+        .requirement i {
+            font-size: 10px;
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: #e2e8f0;
+            color: #64748b;
+        }
+        
+        .requirement.valid { color: #10b981; }
+        .requirement.valid i { background: #d1fae5; color: #10b981; }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* PREMIUM MODAL STYLES */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-card {
+            background: var(--bg-card);
+            width: 90%;
+            max-width: 440px;
+            padding: 40px;
+            border-radius: 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            transform: translateY(30px);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: 1px solid var(--border-dim);
+        }
+
+        .modal-overlay.show .modal-card {
+            transform: translateY(0);
+        }
+
+        .modal-icon-container {
+            width: 80px;
+            height: 80px;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+        }
+
+        .modal-icon-container i {
+            font-size: 36px;
+            color: #ef4444;
+        }
+
+        .modal-status {
+            color: #ef4444;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: 0.1em;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 12px;
+        }
+
+        .modal-message {
+            color: var(--text-muted);
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            text-align: left;
+            background: var(--bg-app);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--border-dim);
+        }
+
+        .modal-message ul {
+            padding-left: 20px;
+            margin-top: 8px;
+        }
+
+        .modal-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        /* Theme switcher handled by theme.js */
+    </style>
+</head>
+<body class="auth-page">
+    <!-- Global switcher injected by theme.js -->
+    <div class="register-container">
+        <div class="logo">
+            <h1>Smarties System</h1>
+            <p>Create your account for Smarties support</p>
+        </div>
+        
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        <form method="POST" autocomplete="off">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="new-username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" autocomplete="email" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="new-password" required placeholder="Create a secure password">
+                
+                <div id="requirements" class="requirements-checklist">
+                    <div id="req-length" class="requirement"><i class="fa-solid fa-circle"></i> At least 6 characters</div>
+                    <div id="req-upper" class="requirement"><i class="fa-solid fa-circle"></i> At least one uppercase letter</div>
+                    <div id="req-number" class="requirement"><i class="fa-solid fa-circle"></i> At least one number</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+            </div>
+            
+            <button type="submit">Create Account</button>
+        </form>
+        
+        <div class="footer">
+            Already have an account? <a href="{{ url_for('login') }}">Login here</a>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <!-- PREMIUM ERROR MODAL -->
+    <div id="errorModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-icon-container">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div class="modal-status">Security Check</div>
+            <div class="modal-title">Password Too Weak</div>
+            <div id="modalMessage" class="modal-message">
+                Please ensure your password meets all safety requirements.
+            </div>
+            <button class="modal-btn" onclick="closeModal()">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const passwordInput = document.getElementById('password');
+        const requirementsDiv = document.getElementById('requirements');
+        const submitBtn = document.querySelector('button[type="submit"]');
+
+        const reqs = {
+            length: document.getElementById('req-length'),
+            upper: document.getElementById('req-upper'),
+            number: document.getElementById('req-number')
+        };
+
+        let isPasswordValid = false;
+
+        const validate = () => {
+            const val = passwordInput.value;
+            const checks = {
+                length: val.length >= 6,
+                upper: /[A-Z]/.test(val),
+                number: /[0-9]/.test(val)
+            };
+
+            let allValid = true;
+            for (const key in checks) {
+                if (checks[key]) {
+                    reqs[key].classList.add('valid');
+                    reqs[key].querySelector('i').className = 'fa-solid fa-check';
+                } else {
+                    reqs[key].classList.remove('valid');
+                    reqs[key].querySelector('i').className = 'fa-solid fa-circle';
+                    allValid = false;
+                }
+            }
+            isPasswordValid = allValid;
+        };
+
+        const form = document.querySelector('form');
+        const modalOverlay = document.getElementById('errorModal');
+        const modalMessage = document.getElementById('modalMessage');
+
+        const showErrorModal = (missing) => {
+            let messageHtml = "Your password is still missing the following requirements:<ul>";
+            missing.forEach(m => messageHtml += `<li>${m}</li>`);
+            messageHtml += "</ul>";
+            modalMessage.innerHTML = messageHtml;
+            modalOverlay.classList.add('show');
+        };
+
+        window.closeModal = () => {
+            modalOverlay.classList.remove('show');
+            passwordInput.focus();
+        };
+
+        form.addEventListener('submit', (e) => {
+            if (!isPasswordValid) {
+                e.preventDefault();
+                
+                const val = passwordInput.value;
+                const missing = [];
+                if (val.length < 6) missing.push("At least 6 characters");
+                if (!/[A-Z]/.test(val)) missing.push("At least one uppercase letter");
+                if (!/[0-9]/.test(val)) missing.push("At least one number");
+                
+                showErrorModal(missing);
+            }
+        });
+
+        passwordInput.addEventListener('focus', () => {
+            requirementsDiv.style.display = 'block';
+        });
+
+        passwordInput.addEventListener('input', validate);
+        
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modalOverlay.classList.contains('show')) {
+                closeModal();
+            }
+        });
+
+        // Initial check
+        validate();
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>

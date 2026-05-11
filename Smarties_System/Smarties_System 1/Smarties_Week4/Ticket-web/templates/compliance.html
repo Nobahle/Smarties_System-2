@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Governance Report - Smarties System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <style>
+        [data-theme="dark"] header {
+            background: linear-gradient(135deg, #111827 0%, var(--bg-card) 100%);
+        }
+        [data-theme="dark"] .badge { background-color: rgba(255,255,255,0.1); }
+        [data-theme="dark"] .logout-btn {
+            background-color: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 24px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+        }
+        .header-left { display:flex; align-items:center; gap:20px; }
+        h1 { font-size:24px; margin: 0; }
+        .user-info { font-size:14px; }
+        .badge {
+            background-color: rgba(255,255,255,0.3);
+            padding:4px 12px;
+            border-radius:20px;
+            font-size:12px;
+            font-weight:600;
+        }
+        .logout-btn {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { background-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
+        .container { max-width:1200px; margin:30px auto; padding:0 20px; }
+
+        .form-section {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-dim);
+        }
+
+        .compliance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .compliance-header h2 {
+            margin: 0;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-export {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-export:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 8px -1px rgba(16, 185, 129, 0.3);
+        }
+
+        .disclaimer-card {
+            background: rgba(59, 130, 246, 0.05);
+            border-left: 4px solid var(--blue);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .disclaimer-card h4 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            color: var(--blue);
+            font-size: 16px;
+        }
+
+        .compliance-grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        }
+
+        .ticket-card {
+            background: var(--bg-app);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-dim);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .ticket-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--border-dim);
+            padding-bottom: 12px;
+        }
+
+        .ticket-id {
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 1.1em;
+        }
+
+        .date-badge {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.05);
+            padding: 4px 8px;
+            border-radius: 20px;
+        }
+
+        .original-text {
+            font-size: 0.95em;
+            color: var(--text-main);
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .ai-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: auto;
+            border-top: 1px solid var(--border-dim);
+            padding-top: 15px;
+        }
+
+        .metric-box {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .metric-label {
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            width: fit-content;
+        }
+
+        .badge-clean { background: rgba(16, 185, 129, 0.1); color: #059669; }
+        .badge-warn { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+        
+    </style>
+</head>
+<body>
+    <div class="theme-toggle">
+        <button id="themeToggleBtn" aria-label="Toggle Theme"><i class="fas fa-adjust"></i></button>
+    </div>
+
+    <!-- Match the Dashboard's Header -->
+    <header>
+        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit;">
+            <h1><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
+            <div class="user-info" style="border-left: 1px solid rgba(255,255,255,0.3); padding-left: 20px; text-align: left;">
+                <div style="font-size: 13px; opacity: 0.9;">Welcome, <strong>{{ session.username }}</strong></div>
+                <div style="margin-top: 2px;"><span class="badge">{{ session.role.upper() }}</span></div>
+            </div>
+        </a>
+        
+        <!-- Quick Nav actions -->
+        <div style="display: flex; gap:10px;">
+            <a href="{{ url_for('dashboard') }}" class="logout-btn" style="background: rgba(255,255,255,0.1);"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Navigation Breadcrumbs -->
+        <div style="margin-bottom: 20px;">
+            <a href="{{ url_for('dashboard') }}" style="color: var(--primary); text-decoration: none; font-weight: 600;"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+        </div>
+
+        <div class="form-section">
+            <div class="compliance-header">
+                <h2>
+                    <i class="fa-solid fa-scale-balanced" style="color: #10b981; filter: drop-shadow(0 2px 4px rgba(16,185,129,0.4));"></i> 
+                    Governance Report
+                </h2>
+                <a href="{{ url_for('download_compliance') }}" class="btn-export">
+                    <i class="fa-solid fa-file-pdf" style="font-size: 1.1em;"></i> Export PDF Report
+                </a>
+            </div>
+            
+            <div class="disclaimer-card">
+                <h4><i class="fa-solid fa-circle-info" style="color: var(--blue); filter: drop-shadow(0 2px 4px rgba(59,130,246,0.3));"></i> Ethical Triaging Protocol Active</h4>
+                <p style="margin: 0; line-height: 1.5; color: var(--text-main);">This dashboard is restricted to Compliance roles. All interactions displayed display live outputs from the Cohere NLP Model evaluating organizational urgency alongside linguistic biases. Tickets highlighting elevated risk or bias must be manually verified to guarantee equitable IT routing.</p>
+            </div>
+            
+            <div style="overflow-x: auto; background: var(--bg-app); border-radius: 12px; border: 1px solid var(--border-dim);">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9em;">
+                    <thead>
+                        <tr style="background: rgba(0,0,0,0.03); border-bottom: 2px solid var(--border-dim);">
+                            <th style="padding: 15px; color: var(--text-muted); font-weight: 600;">ID / Date</th>
+                            <th style="padding: 15px; color: var(--text-muted); font-weight: 600;">Original Request</th>
+                            <th style="padding: 15px; color: var(--text-muted); font-weight: 600;">Attributes</th>
+                            <th style="padding: 15px; color: var(--text-muted); font-weight: 600;">Severity & Bias Risks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in tickets %}
+                        <tr style="border-bottom: 1px solid var(--border-dim); transition: background-color 0.2s;">
+                            <td style="padding: 15px; vertical-align: top;">
+                                <div class="ticket-id" style="margin-bottom: 4px;">#{{ t.id }}</div>
+                                <div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 4px;">
+                                    <i class="fa-solid fa-circle-user" style="opacity: 0.7;"></i> {{ t.sender_name }}
+                                </div>
+                                <div class="date-badge"><i class="fa-regular fa-clock"></i> {{ t.created_at[:16] }}</div>
+                            </td>
+                            
+                            <td style="padding: 15px; vertical-align: top; max-width: 350px;">
+                                <div class="original-text" style="font-size: 0.9em; padding: 10px; margin: 0;">"{{ t.ticket_text }}"</div>
+                            </td>
+
+                            <td style="padding: 15px; vertical-align: top;">
+                                <div style="display: flex; flex-direction: column; gap: 8px; font-weight: 500; color: var(--text-main);">
+                                    <span style="background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                        <i class="fa-solid fa-building" style="color: var(--blue);"></i> {{ t.category }}
+                                    </span>
+                                    <span style="background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                        <i class="fa-solid fa-comment-dots" style="color: var(--primary);"></i> {{ t.tone }}
+                                    </span>
+                                </div>
+                            </td>
+
+                            <td style="padding: 15px; vertical-align: top;">
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    {% set risk_raw = t.risk_level | default('Low - Standard', true) %}
+                                    {% set risk_clean = risk_raw.split(' - ')[0] if ' - ' in risk_raw else risk_raw %}
+                                    <div class="status-badge {{ 'badge-danger' if 'High' in risk_clean else ('badge-warn' if 'Medium' in risk_clean else 'badge-clean') }}" title="{{ risk_raw }}">
+                                        <i class="fa-solid fa-{{ 'shield-halved' if 'Low' in risk_clean else 'circle-exclamation' }}"></i>
+                                        {{ risk_clean }} Risk Exaggeration
+                                    </div>
+                                    
+                                    {% set bias = t.bias_flag | default('No', true) %}
+                                    <div class="status-badge {{ 'badge-danger' if 'Yes' in bias else 'badge-clean' }}">
+                                        <i class="fa-solid fa-{{ 'triangle-exclamation' if 'Yes' in bias else 'circle-check' }}"></i>
+                                        {{ 'Bias Flagged' if 'Yes' in bias else 'Demographics Clean' }}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 60px;">
+                                <i class="fa-solid fa-clipboard-check" style="font-size: 48px; color: var(--text-muted); margin-bottom: 15px;"></i>
+                                <h3 style="margin: 0; color: var(--text-main);">No Logged Interactions</h3>
+                                <p style="color: var(--text-muted); margin-top: 8px;">The system hasn't evaluated any AI interactions yet. Submit a ticket to see compliance metrics.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body>
+</html>

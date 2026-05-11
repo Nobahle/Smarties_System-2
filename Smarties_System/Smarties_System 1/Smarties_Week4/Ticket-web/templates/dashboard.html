@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smarties System - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            transition: all 0.3s ease;
+        }
+        [data-theme="dark"] header {
+            background: linear-gradient(135deg, #111827 0%, var(--bg-card) 100%);
+        }
+        [data-theme="dark"] .badge { background-color: rgba(255,255,255,0.1); }
+        [data-theme="dark"] .logout-btn {
+            background-color: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+        [data-theme="dark"] .ticket-text { border-color: var(--primary); }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 24px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+        }
+        .header-left { display:flex; align-items:center; gap:20px; }
+        h1 { font-size:24px; }
+        .user-info { font-size:14px; }
+        .badge {
+            background-color: rgba(255,255,255,0.3);
+            padding:4px 12px;
+            border-radius:20px;
+            font-size:12px;
+            font-weight:600;
+        }
+        .logout-btn {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { background-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
+        .container { max-width:1200px; margin:30px auto; padding:0 20px; }
+        .form-section, .tickets-section {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-dim);
+            transition: all 0.3s ease;
+        }
+        .form-section h2, .tickets-section h2 { color: var(--text-main); margin-bottom: 24px; font-size: 20px; }
+        .form-group { margin-bottom:20px; }
+        label { display:block; margin-bottom:8px; color: var(--text-main); font-weight:500; }
+        textarea {
+            width:100%; padding:14px; border:1px solid var(--border-dim); border-radius:8px;
+            font-size:14px; font-family: inherit;
+            min-height:120px; resize:vertical; transition: all 0.3s;
+            background-color: var(--bg-input);
+            color: var(--text-main);
+        }
+        textarea:focus { outline:none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        button {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white; border: none; padding: 12px 32px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: var(--shadow-sm);
+        }
+        button:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+        .ticket-item {
+            border: 1px solid var(--border-dim); border-radius: 12px; padding: 20px;
+            margin-bottom: 20px; background-color: var(--bg-app);
+            transition: all 0.3s ease;
+        }
+        .ticket-header { display:flex; justify-content:space-between; align-items:start; margin-bottom:15px; }
+        .ticket-id {
+            background-color: var(--primary); color: white; padding: 4px 12px;
+            border-radius: 6px; font-size: 12px; font-weight: 600;
+        }
+        .status-badge { padding:6px 14px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-open { background-color: rgba(245, 158, 11, 0.15); color: #b45309; }
+        .status-inprogress { background-color: rgba(59, 130, 246, 0.15); color: #1d4ed8; }
+        .status-closed { background-color: rgba(16, 185, 129, 0.15); color: #065f46; }
+
+        .ticket-category { margin: 10px 0; color: var(--text-muted); font-size: 13px; font-weight: 500; }
+        .ticket-text { color: var(--text-main); margin: 12px 0; padding: 14px; background: var(--bg-surface); border-radius: 8px; border-left: 4px solid var(--primary); font-size: 14px; line-height: 1.6; }
+        .ticket-response { color: var(--text-muted); margin: 12px 0; padding: 14px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 13px; font-style: italic; }
+        [data-theme="dark"] .ticket-response { background: rgba(255,255,255,0.03); }
+        .ticket-meta { color: var(--text-muted); font-size: 11px; margin-top: 12px; display: flex; gap: 15px; opacity: 0.8; }
+        .delete-btn {
+            background: var(--error) !important; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .delete-btn:hover { opacity: 0.9; transform: translateY(-1px); background: #b91c1c !important; }
+        
+        .update-btn {
+            background: var(--primary) !important; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .update-btn:hover { opacity: 0.9; transform: translateY(-1px); background: var(--primary-hover) !important; }
+        .no-tickets { text-align:center; color: var(--text-muted); padding:40px; }
+        .admin-notice { background-color: rgba(59, 130, 246, 0.1); border-left:4px solid var(--primary); padding:15px; border-radius:4px; margin-bottom:20px; color: var(--text-main); }
+
+        .back-btn { display:inline-block; background-color:#0ea5e9; color:white; text-decoration:none; padding:10px 20px; border-radius:4px; margin-top:20px; }
+        .back-btn:hover { background-color:#0284c7; }
+        
+        .flash-update {
+            animation: flashSuccess 1s ease-out;
+        }
+        @keyframes flashSuccess {
+            0% { background-color: #51cf66; transform: scale(1.05); }
+            100% { background-color: inherit; transform: scale(1); }
+        }
+        
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .tooltip:hover::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: 100%; left: 50%;
+            transform: translateX(-50%);
+            background: var(--text-main); color: var(--bg-app);
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 11px; white-space: nowrap;
+            margin-bottom: 8px; z-index: 100;
+            box-shadow: var(--shadow-lg);
+            font-weight: 500;
+        }
+
+        /* PREMIUM MODAL STYLES */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-card {
+            background: var(--bg-card);
+            width: 90%;
+            max-width: 480px;
+            padding: 40px;
+            border-radius: 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            transform: translateY(30px);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: 1px solid var(--border-dim);
+        }
+
+        .modal-overlay.show .modal-card {
+            transform: translateY(0);
+        }
+
+        .modal-icon-container {
+            width: 80px;
+            height: 80px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+        }
+
+        .modal-icon-container i {
+            font-size: 40px;
+            color: #10b981;
+        }
+
+        .modal-status {
+            color: #10b981;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: 0.1em;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .modal-message {
+            color: var(--text-muted);
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .modal-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 14px 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .modal-btn:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        /* DELETE MODAL VARIANT */
+        .modal-delete .modal-icon-container {
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .modal-delete .modal-icon-container i {
+            color: #ef4444;
+        }
+        .modal-delete .modal-status {
+            color: #ef4444;
+        }
+        .modal-delete .modal-btn {
+            background: #ef4444;
+        }
+        .modal-delete .modal-btn:hover {
+            background: #dc2626;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        .modal-btn-secondary {
+            background: var(--bg-surface);
+            color: var(--text-main);
+            border: 1px solid var(--border-dim);
+            padding: 14px 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .modal-btn-secondary:hover {
+            background: var(--border-dim);
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:25px;">
+            <h1><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
+            <div class="user-info" style="border-left: 1px solid rgba(255,255,255,0.3); padding-left: 20px; text-align: left;">
+                <div style="font-size: 13px; opacity: 0.9;">Welcome, <strong>{{ session.username }}</strong></div>
+                <div style="margin-top: 2px;"><span class="badge">{{ session.role.upper() }}</span></div>
+            </div>
+        </a>
+        <div style="display:flex; align-items:center; gap:20px;">
+            <a href="{{ url_for('notifications') }}" class="logout-btn" style="background: rgba(255,255,255,0.15); position: relative;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
+            </a>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+    </header>
+
+    <div class="container">
+        {% if session.pop('show_success_modal', None) %}
+        <div id="successModalOverlay" class="modal-overlay">
+            <div class="modal-card">
+                <div class="modal-icon-container">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div class="modal-status">SUCCESS</div>
+                <div class="modal-title">Thank you for your request.</div>
+                <div class="modal-message">
+                    Your request has been processed successfully.
+                </div>
+                <button class="modal-btn" onclick="closeSuccessModal()">Continue</button>
+            </div>
+        </div>
+        <script>
+            window.addEventListener('load', () => {
+                const overlay = document.getElementById('successModalOverlay');
+                if (overlay) {
+                    setTimeout(() => {
+                        overlay.classList.add('show');
+                    }, 300);
+                }
+            });
+
+            function closeSuccessModal() {
+                const overlay = document.getElementById('successModalOverlay');
+                if (overlay) {
+                    overlay.classList.remove('show');
+                    setTimeout(() => {
+                        overlay.remove();
+                    }, 300);
+                }
+            }
+        </script>
+        {% endif %}
+
+        {% if session.pop('show_delete_modal', None) %}
+        <div id="deleteSuccessModalOverlay" class="modal-overlay modal-delete">
+            <div class="modal-card">
+                <div class="modal-icon-container">
+                    <i class="fa-solid fa-trash-can"></i>
+                </div>
+                <div class="modal-status">DELETED</div>
+                <div class="modal-title">Ticket Removed Successfully.</div>
+                <div class="modal-message">
+                    The ticket has been permanently removed from the active queue.
+                </div>
+                <button class="modal-btn" onclick="closeDeleteSuccessModal()">Continue</button>
+            </div>
+        </div>
+        <script>
+            window.addEventListener('load', () => {
+                const overlay = document.getElementById('deleteSuccessModalOverlay');
+                if (overlay) {
+                    setTimeout(() => {
+                        overlay.classList.add('show');
+                    }, 300);
+                }
+            });
+
+            function closeDeleteSuccessModal() {
+                const overlay = document.getElementById('deleteSuccessModalOverlay');
+                if (overlay) {
+                    overlay.classList.remove('show');
+                    setTimeout(() => {
+                        overlay.remove();
+                    }, 300);
+                }
+            }
+        </script>
+        {% endif %}
+
+        
+        {% if session.role == 'user' %}
+        <div class="form-section">
+            <h2>Submit a New Ticket</h2>
+            <form action="{{ url_for('submit') }}" method="POST">
+                <div class="form-group">
+                    <label for="ticket">Describe your issue:</label>
+                    <textarea name="ticket" id="ticket" placeholder="Describe your problem..." required></textarea>
+                </div>
+                <button type="submit">Submit Ticket</button>
+                <a href="{{ url_for('view') }}" style="margin-left:15px; text-decoration:none; font-weight:bold; color:var(--primary);">View My Tickets</a>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if session.role == 'admin' %}
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+            <a href="{{ url_for('report') }}" style="background: linear-gradient(135deg,#1e3a5f 0%,#3b82f6 100%); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(59,130,246,0.35); display: flex; align-items: center; gap: 7px;"><i class="fa-solid fa-file-invoice" style="margin-right: 7px;"></i>Generate Business Report</a>
+            <a href="{{ url_for('audit') }}" style="background: linear-gradient(135deg,var(--primary) 0%,#825ee4 100%); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"><i class="fa-solid fa-clipboard-list" style="margin-right: 7px;"></i>Audit Logs</a>
+            <a href="{{ url_for('compliance') }}" style="background: linear-gradient(135deg,#059669 0%,#10b981 100%); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"><i class="fa-solid fa-shield-alt" style="margin-right: 7px;"></i>Governance Report</a>
+        </div>
+
+        <!-- AUTOMATED SUMMARY (DASHBOARD UPGRADE) -->
+        <div class="form-section" id="weekly-insights-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2><i class="fa-solid fa-chart-line" style="margin-right: 8px;"></i>Weekly Summary (Last 7 Days)</h2>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: center;">
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                    <div id="box-total" class="tooltip" data-tip="All tickets created in the last 7 days" style="background:var(--primary); color:white; padding:20px; border-radius:8px; text-align:center; transition: all 0.3s;">
+                        <div id="stat-total" style="font-size:32px; font-weight:bold;">-</div>
+                        <div style="font-size:14px; font-weight: 600;">Total Tickets</div>
+                    </div>
+                    <div id="box-resolved" class="tooltip" data-tip="Tickets successfully processed and closed" style="background:#10b981; color:white; padding:20px; border-radius:8px; text-align:center; transition: all 0.3s;">
+                        <div id="stat-resolved" style="font-size:32px; font-weight:bold;">-</div>
+                        <div style="font-size:14px; font-weight: 600;">Resolved</div>
+                    </div>
+                    <div id="box-pending" class="tooltip" data-tip="Tickets currently Open or In Progress" style="background:#ffa500; color:white; padding:20px; border-radius:8px; text-align:center; transition: all 0.3s;">
+                        <div id="stat-pending" style="font-size:32px; font-weight:bold;">-</div>
+                        <div style="font-size:14px; font-weight: 600;">Pending</div>
+                    </div>
+                    <div id="box-closure" class="tooltip" data-tip="Percentage of total tickets that are resolved" style="background:#00d4ff; color:white; padding:20px; border-radius:8px; text-align:center; transition: all 0.3s;">
+                        <div id="stat-closure" style="font-size:32px; font-weight:bold;">-%</div>
+                        <div style="font-size:14px; font-weight: 600;">Closure Rate</div>
+                    </div>
+                </div>
+                
+                <div style="background: var(--bg-app); border: 1px solid var(--border-dim); border-radius: 12px; padding: 15px; text-align: center; height: 100%; display: flex; justify-content: center; align-items: center;">
+                    <canvas id="ticketStatusChart" style="max-height: 180px;"></canvas>
+                </div>
+            </div>
+            <div style="text-align: right; margin-top: 10px; font-size: 11px; color: #999;" id="last-updated">
+                Updating...
+            </div>
+        </div>
+
+        <!-- ALL TICKETS SECTION -->
+        <div class="tickets-section">
+            <h2>All Tickets</h2>
+            {% if tickets %}
+                {% for ticket in tickets %}
+                    <div class="ticket-item">
+                        <div class="ticket-header" style="justify-content: flex-start; gap: 15px;">
+                            <span class="ticket-id">#{{ ticket['id'] }}</span>
+                            <span style="font-weight: 700; color: var(--text-main); font-size: 15px;">{{ ticket['sender_name'] }}</span>
+                            <span style="padding: 2px 10px; border-radius: 99px; font-size: 10px; font-weight: 800; text-transform: uppercase; background: var(--bg-surface); border: 1px solid var(--border-dim); color: var(--text-muted);">
+                                {{ ticket['category'] }}
+                            </span>
+                            <div style="margin-left: auto; display: flex; gap: 8px;">
+                                <form method="POST" action="{{ url_for('update_status', ticket_id=ticket['id']) }}" style="display:flex; align-items:center; gap:8px;">
+                                    <select name="status" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); background: var(--bg-surface); color: var(--text-main); font-size: 11px;">
+                                        <option value="Open" {% if ticket['status']=='Open' %}selected{% endif %}>Open</option>
+                                        <option value="In Progress" {% if ticket['status']=='In Progress' %}selected{% endif %}>In Progress</option>
+                                        <option value="Resolved" {% if ticket['status']=='Resolved' %}selected{% endif %}>Resolved</option>
+                                    </select>
+                                    <button type="submit" class="update-btn" style="padding: 4px 8px; margin-left: 5px;"><i class="fa-solid fa-save"></i></button>
+                                </form>
+                                <button type="button" class="delete-btn" style="padding: 4px 8px; margin-left: 5px;" onclick="openDeleteConfirm('{{ ticket['id'] }}', '{{ url_for('delete_ticket', ticket_id=ticket['id']) }}')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="ticket-text"><strong>Issue:</strong><br>{{ ticket['ticket_text'] }}</div>
+                        <div class="ticket-response">
+                            <strong>Status:</strong> 
+                            {% if ticket['requires_approval'] == 1 and ticket['is_approved'] == 0 %}
+                                <span style="color:#f59e0b; font-weight:bold;"><i class="fa-solid fa-hourglass-half"></i> AWAITING APPROVAL</span>
+                                {% if session.role == 'admin' %}
+                                    <form action="{{ url_for('approve_ticket', ticket_id=ticket['id']) }}" method="POST" style="display:inline; margin-left:10px;">
+                                        <button type="submit" style="padding:4px 10px; font-size:11px; background:#10b981;">Approve Now</button>
+                                    </form>
+                                {% endif %}
+                            {% else %}
+                                <span style="color:#10b981; font-weight:bold;"><i class="fa-solid fa-circle-check"></i> AUTOMATED PROCESSING COMPLETE</span>
+                            {% endif %}
+                            <br><br>
+                            <strong>AI Response:</strong><br>{{ ticket['response'] }}
+                        </div>
+                        <div class="ticket-meta" style="display: flex; justify-content: space-between; border-top: 1px solid var(--border-dim); padding-top: 12px; margin-top: 15px;">
+                            <div style="display: flex; gap: 15px; font-size: 11px; color: var(--text-muted);">
+                                <span><i class="fa-regular fa-clock"></i> {{ ticket['created_at'] }}</span>
+                                <span><i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> Priority: <strong>{{ ticket['priority_level'] or 'Normal' }}</strong></span>
+                                <span><i class="fa-solid fa-face-smile" style="color: var(--primary);"></i> Tone: {{ ticket['tone'] }}</span>
+                            </div>
+                            <div style="font-size: 12px; font-weight: 700;">
+                                <i class="fa-solid fa-headset" style="margin-right: 5px; color: var(--primary);"></i> 
+                                Agent: <span style="color: var(--text-main);">{{ ticket['agent_name'] or 'AI Auto-Queue' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-tickets">No tickets found.</div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function checkNotifications() {
+            fetch("{{ url_for('api_unread_notifications') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notification-badge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.innerText = data.count > 99 ? '99+' : data.count;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+        checkNotifications();
+        setInterval(checkNotifications, 10000);
+
+        {% if session.role == 'admin' %}
+        let ticketChart = null;
+
+        function updateSummary() {
+            fetch("{{ url_for('api_summary') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const elements = [
+                        {id: 'stat-total', val: data.total, box: 'box-total'},
+                        {id: 'stat-resolved', val: data.resolved, box: 'box-resolved'},
+                        {id: 'stat-pending', val: data.pending, box: 'box-pending'},
+                        {id: 'stat-closure', val: data.closure_rate, box: 'box-closure'}
+                    ];
+                    
+                    elements.forEach(el => {
+                        const target = document.getElementById(el.id);
+                        // Flash only if value changed and it's not the initial load ('-')
+                        if (target && target.innerText != el.val && target.innerText != '-' && target.innerText != '-%') {
+                            target.innerText = el.val;
+                            const box = document.getElementById(el.box);
+                            box.classList.remove('flash-update');
+                            void box.offsetWidth; // trigger reflow
+                            box.classList.add('flash-update');
+                        } else if (target) {
+                            target.innerText = el.val;
+                        }
+                    });
+
+                    document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+
+                    renderChart(data.resolved, data.in_progress, data.open);
+                })
+                .catch(err => console.error("Error fetching summary:", err));
+        }
+
+        function renderChart(resolved, in_progress, open) {
+            const ctx = document.getElementById('ticketStatusChart');
+            if(!ctx) return;
+            
+            if (ticketChart) {
+                ticketChart.data.datasets[0].data = [resolved, in_progress, open];
+                ticketChart.update();
+            } else {
+                ticketChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Resolved', 'In Progress', 'Open'],
+                        datasets: [{
+                            data: [resolved, in_progress, open],
+                            backgroundColor: ['#10b981', '#3b82f6', '#f59e0b'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { 
+                                position: 'right', 
+                                labels: { 
+                                    boxWidth: 12, 
+                                    padding: 10,
+                                    color: getComputedStyle(document.body).getPropertyValue('--text-main').trim() || '#111827',
+                                    font: { family: 'Inter' }
+                                } 
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Run immediately
+        updateSummary();
+        // and repeat
+        setInterval(updateSummary, 30000);
+        {% endif %}
+    </script>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="deleteConfirmModal" class="modal-overlay modal-delete">
+        <div class="modal-card">
+            <div class="modal-icon-container">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="modal-status">CONFIRMATION</div>
+            <div class="modal-title">Delete Ticket #<span id="confirmTicketId"></span>?</div>
+            <div class="modal-message">
+                Are you sure you want to delete this ticket? This action cannot be undone.
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <form id="deleteConfirmForm" method="POST" action="">
+                    <button type="submit" class="modal-btn">Yes, Delete It</button>
+                </form>
+                <button class="modal-btn-secondary" onclick="closeDeleteConfirm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openDeleteConfirm(ticketId, deleteUrl) {
+            document.getElementById('confirmTicketId').innerText = ticketId;
+            document.getElementById('deleteConfirmForm').action = deleteUrl;
+            document.getElementById('deleteConfirmModal').classList.add('show');
+        }
+
+        function closeDeleteConfirm() {
+            document.getElementById('deleteConfirmModal').classList.remove('show');
+        }
+    </script>
+</body>
+</html>

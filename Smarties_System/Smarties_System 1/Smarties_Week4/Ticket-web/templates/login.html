@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smarties System - Login</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <style>
+        :root {
+            /* Inherit from theme.css */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-sans);
+            /* background-color: var(--bg-app); */
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text-main);
+            transition: all 0.3s ease;
+        }
+
+        /* Using the global switcher, so we can remove local styles if needed, 
+           but we'll keep the layout clean */
+        .theme-switcher {
+            /* Global styles in theme.css will handle this */
+        }
+
+        .theme-switcher span {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+            margin-left: 8px;
+        }
+
+        .theme-btn {
+            min-width: 68px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .theme-btn.selected {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .theme-btn:not(.selected):hover {
+            background-color: rgba(156, 163, 175, 0.1);
+        }
+        
+        .login-container {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            transition: all 0.3s ease;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-img {
+            width: 72px;
+            height: 72px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            background-color: white;
+            padding: 8px;
+            border: 1px solid var(--border-dim);
+            box-shadow: var(--shadow-sm);
+            object-fit: cover;
+        }
+
+        .logo h1 {
+            color: var(--text-main);
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .logo p {
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 400;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 14px;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+        
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        .error {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border: 1px solid var(--error);
+            display: flex;
+            align-items: center;
+        }
+        }
+        
+        .error::before {
+            content: '\f071';
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            margin-right: 8px;
+        }
+
+        .success {
+            background-color: #ecfdf5;
+            color: #059669;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            border-left: 4px solid #10b981;
+            font-weight: 500;
+        }
+        
+        .success::before {
+            content: '\f058';
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            margin-right: 8px;
+        }
+        
+        button[type="submit"] {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            font-family: inherit;
+            margin-top: 10px;
+        }
+        
+        button[type="submit"]:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .footer a:hover {
+            color: var(--primary-hover);
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="auth-page">
+    <!-- Theme switcher handled by theme.js -->
+    <div class="login-container">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Smarties System Logo" class="logo-img">
+            <h1>Smarties System</h1>
+            <p>Intelligent Support & Issue Tracking</p>
+        </div>
+        
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        {% if success %}
+            <div class="success">{{ success }}</div>
+        {% endif %}
+        
+        <form method="POST" autocomplete="off" onsubmit="return true">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="new-password" value="" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="new-password" value="" required>
+                <div style="text-align: right; margin-top: 8px;">
+                    <a href="{{ url_for('forgot_password') }}" style="color: var(--primary); font-size: 13px; text-decoration: none; font-weight: 500;">Forgot Password?</a>
+                </div>
+            </div>
+            
+            <button type="submit">Login</button>
+        </form>
+        
+        <div class="footer">
+            Don't have an account? <a href="{{ url_for('register') }}">Register here</a>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script>
+        // Clear autofilled fields only on initial page load
+        function clearFields() {
+            const username = document.getElementById('username');
+            const password = document.getElementById('password');
+            if (username) username.value = '';
+            if (password) password.value = '';
+        }
+        
+        clearFields();
+        document.addEventListener('DOMContentLoaded', clearFields);
+        setTimeout(clearFields, 50);
+        setTimeout(clearFields, 200);
+    </script>
+</body>
+</html>

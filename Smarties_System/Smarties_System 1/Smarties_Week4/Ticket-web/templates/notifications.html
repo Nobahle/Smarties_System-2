@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications - Smarties Automation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .notifications-container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .notification-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-sm);
+        }
+        .notification-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--primary);
+        }
+        .notification-card.unread {
+            border-left: 4px solid var(--primary);
+            background: var(--bg-surface);
+        }
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .notification-type {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+        .type-assignment { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); }
+        .type-update { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .type-approval { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .type-global { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .notification-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .notification-message {
+            color: var(--text-main);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 40px;
+            color: var(--text-muted);
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 2px dashed var(--border-dim);
+        }
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+        }
+        [data-theme="dark"] header {
+            background: linear-gradient(135deg, #111827 0%, var(--bg-card) 100%);
+        }
+        .nav-brand { font-size: 20px; font-weight: 700; color: white; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+        .nav-links { display: flex; gap: 20px; }
+        .nav-links a { color: rgba(255,255,255,0.85); text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.2s; }
+        .nav-links a:hover { color: white; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{{ url_for('dashboard') }}" class="nav-brand">
+            <i class="fa-solid fa-rocket"></i> Smarties System
+        </a>
+        <div style="display:flex; align-items:center; gap:20px;">
+            <a href="{{ url_for('dashboard') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">Dashboard</a>
+            <a href="{{ url_for('view') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">My Tickets</a>
+            <a href="{{ url_for('notifications') }}" style="background: rgba(255,255,255,0.15); position: relative; color: white; padding: 8px 15px; border-radius: 8px; text-decoration: none;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
+            </a>
+            <a href="{{ url_for('logout') }}" style="background: rgba(255,255,255,0.15); color: white; padding: 8px 15px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px;">Logout</a>
+        </div>
+    </header>
+
+    <div class="notifications-container" style="max-width: 1100px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 40px 0 30px;">
+            <h1 style="color: var(--text-main); font-size: 28px; margin: 0;">
+                {% if session.role == 'admin' %}
+                    <i class="fa-solid fa-gears" style="color: var(--primary);"></i> System Activity Dashboard
+                {% else %}
+                    Your Notifications
+                {% endif %}
+            </h1>
+            <a href="{{ url_for('dashboard') }}" style="color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 600;"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+        </div>
+        
+        {% if not notifications %}
+            <div class="empty-state">
+                <i class="fa-solid fa-bell-slash" style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;"></i>
+                <p style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">No activity logged yet</p>
+                <p>Global system notifications will appear here for audit purposes.</p>
+            </div>
+        {% else %}
+            {% if session.role == 'admin' %}
+                <!-- PREMIUM ADMIN ACTIVITY TABLE -->
+                <div style="background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-lg);">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                        <thead>
+                            <tr style="background: var(--bg-app); border-bottom: 1px solid var(--border-dim);">
+                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Event Details</th>
+                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Action Performed By</th>
+                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for note in notifications %}
+                                <tr style="border-bottom: 1px solid var(--border-dim); transition: background 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.05)'" onmouseout="this.style.background='transparent'">
+                                    <td style="padding: 16px; color: var(--text-main); font-weight: 500; font-size: 14px;">
+                                        {{ note.message.split(' by ')[0]|replace('GLOBAL ALERT: ', '') }}
+                                    </td>
+                                    <td style="padding: 16px;">
+                                        {% set performer = note.message.split(' by ')[1] if ' by ' in note.message else 'System' %}
+                                        <span style="color: var(--text-main); font-size: 14px; font-weight: 700; background: var(--bg-app); padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-dim);">
+                                            <i class="fa-solid fa-user" style="font-size: 11px; margin-right: 6px; color: var(--primary);"></i> {{ performer.strip('.') }}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 16px; color: var(--text-muted); font-size: 13px;">
+                                        {{ note.created_at }}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <!-- STANDARD USER CARD VIEW -->
+                {% for note in notifications %}
+                    <div class="notification-card {% if note.is_read == 0 %}unread{% endif %}">
+                        <div class="notification-header">
+                            <span class="notification-type type-{{ note.type|lower }}">{{ note.type }}</span>
+                            <span class="notification-time"><i class="fa-regular fa-clock"></i> {{ note.created_at }}</span>
+                        </div>
+                        <div class="notification-message">
+                            {{ note.message }}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <script>
+        function checkNotifications() {
+            fetch("{{ url_for('api_unread_notifications') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notification-badge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.innerText = data.count > 99 ? '99+' : data.count;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+        checkNotifications();
+        setInterval(checkNotifications, 10000);
+    </script>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body>
+</html>
