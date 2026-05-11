@@ -299,6 +299,37 @@
     </header>
 
     <div class="container">
+        <!-- SEARCH & FILTER BAR -->
+        <div class="tickets-section" style="padding: 20px; margin-bottom: 25px;">
+            <form method="GET" action="{{ url_for('dashboard') }}" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 2; min-width: 250px;">
+                    <label style="font-size: 12px; margin-bottom: 5px;"><i class="fa-solid fa-magnifying-glass"></i> Search</label>
+                    <input type="text" name="search" value="{{ search }}" placeholder="ID, issue text or username..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 12px; margin-bottom: 5px;">Status</label>
+                    <select name="status" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+                        <option value="">All Statuses</option>
+                        <option value="Open" {% if status_filter == 'Open' %}selected{% endif %}>Open</option>
+                        <option value="In Progress" {% if status_filter == 'In Progress' %}selected{% endif %}>In Progress</option>
+                        <option value="Closed" {% if status_filter == 'Closed' %}selected{% endif %}>Closed</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 12px; margin-bottom: 5px;">Category</label>
+                    <select name="category" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+                        <option value="">All Categories</option>
+                        {% for dept in all_departments %}
+                        <option value="{{ dept }}" {% if category_filter == dept %}selected{% endif %}>{{ dept }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" style="padding: 10px 20px;">Filter</button>
+                    <a href="{{ url_for('dashboard') }}" style="background: var(--bg-app); color: var(--text-main); border: 1px solid var(--border-dim); padding: 10px 15px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">Clear</a>
+                </div>
+            </form>
+        </div>
         {% if session.pop('show_success_modal', None) %}
         <div id="successModalOverlay" class="modal-overlay">
             <div class="modal-card">

@@ -64,6 +64,24 @@
             transition: color 0.2s;
         }
         .nav-links a:hover { color: var(--primary-hover); text-decoration: underline; }
+
+        /* Skeleton Loading */
+        .skeleton-loader {
+            display: none;
+            margin-top: 20px;
+        }
+        .skeleton-loader .line {
+            height: 12px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-card) 50%, var(--bg-app) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 4px;
+        }
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
     </style>
 </head>
 <body>
@@ -82,13 +100,25 @@
         <div class="form-section">
             <h2><i class="fa-solid fa-ticket" style="margin-right: 8px;"></i>Submit a Ticket</h2>
             
-            <form action="/submit" method="POST">
+            <form action="/submit" method="POST" enctype="multipart/form-data" id="ticket-form">
                 <div class="form-group">
                     <label for="ticket">Describe your issue:</label>
                     <textarea name="ticket" id="ticket" placeholder="Enter your issue or request..." required></textarea>
                 </div>
-                <button type="submit">Submit Ticket</button>
+                <div class="form-group">
+                    <label for="attachment"><i class="fa-solid fa-paperclip"></i> Attachments (Optional):</label>
+                    <input type="file" name="attachment" id="attachment" style="background: var(--bg-input); color: var(--text-main); width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); font-size: 13px;">
+                    <small style="color: var(--text-muted); font-size: 11px; display: block; margin-top: 5px;">Supported: PNG, JPG, PDF, TXT, LOG (Max 16MB)</small>
+                </div>
+                <button type="submit" id="submit-btn">Submit Ticket</button>
             </form>
+
+            <div class="skeleton-loader" id="loader">
+                <div class="line" style="width: 100%;"></div>
+                <div class="line" style="width: 80%;"></div>
+                <div class="line" style="width: 90%;"></div>
+                <p style="text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 10px;">AI is analyzing your request and preparing a response...</p>
+            </div>
             
             <div class="nav-links">
                 <a href="{{ url_for('view') }}">View My Tickets</a>
@@ -96,6 +126,12 @@
             </div>
         </div>
     </div>
+    <script>
+        document.getElementById('ticket-form').onsubmit = function() {
+            document.getElementById('submit-btn').style.display = 'none';
+            document.getElementById('loader').style.display = 'block';
+        };
+    </script>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>
 </html>

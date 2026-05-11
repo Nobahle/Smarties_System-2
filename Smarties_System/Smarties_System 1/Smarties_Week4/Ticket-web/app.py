@@ -12,6 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import requests
 import json
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 
@@ -52,6 +53,18 @@ DEPARTMENTS = ["IT", "Finance", "HR", "Operations"]
 # ---------------- APP ----------------
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
+
+# ---------------- UPLOADS ----------------
+UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log'}
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "tickets.db")
 
@@ -130,6 +143,18 @@ def init_db():
         is_active INTEGER DEFAULT 1
     )
     """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id INTEGER,
+        user_id INTEGER,
+        comment_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(ticket_id) REFERENCES tickets(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
     
     # Check if we need to add new columns to existing tickets table
     try:
@@ -137,6 +162,9 @@ def init_db():
     except: pass
     try:
         cursor.execute("ALTER TABLE tickets ADD COLUMN priority_level TEXT DEFAULT 'Normal'")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE tickets ADD COLUMN attachment_path TEXT")
     except: pass
     try:
         cursor.execute("ALTER TABLE tickets ADD COLUMN requires_approval INTEGER DEFAULT 0")
@@ -578,42 +606,92 @@ def register():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    search = request.args.get('search', '')
+    status_filter = request.args.get('status', '')
+    category_filter = request.args.get('category', '')
+    
     conn = get_db()
-    tickets = conn.execute("""
+    query = """
         SELECT t.*, u.username as sender_name, a.username as agent_name
         FROM tickets t 
         JOIN users u ON t.user_id = u.id 
         LEFT JOIN users a ON t.assigned_to = a.id
-        ORDER BY t.created_at DESC
-    """).fetchall()
+        WHERE 1=1
+    """
+    params = []
+    
+    if search:
+        query += " AND (t.ticket_text LIKE ? OR u.username LIKE ? OR t.id LIKE ?)"
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+    if status_filter:
+        query += " AND t.status = ?"
+        params.append(status_filter)
+    if category_filter:
+        query += " AND t.category LIKE ?"
+        params.append(f'%{category_filter}%')
+        
+    query += " ORDER BY t.created_at DESC"
+    tickets = conn.execute(query, params).fetchall()
+    
+    # Fetch comments for these tickets
+    ticket_ids = [t['id'] for t in tickets]
+    comments_map = {}
+    if ticket_ids:
+        placeholders = ','.join(['?'] * len(ticket_ids))
+        comments = conn.execute(f"""
+            SELECT c.*, u.username 
+            FROM comments c 
+            JOIN users u ON c.user_id = u.id 
+            WHERE c.ticket_id IN ({placeholders})
+            ORDER BY c.created_at ASC
+        """, ticket_ids).fetchall()
+        for c in comments:
+            if c['ticket_id'] not in comments_map:
+                comments_map[c['ticket_id']] = []
+            comments_map[c['ticket_id']].append(dict(c))
+
     conn.close()
-    return render_template("dashboard.html", tickets=tickets, all_departments=DEPARTMENTS)
+    return render_template("dashboard.html", tickets=tickets, all_departments=DEPARTMENTS, 
+                           search=search, status_filter=status_filter, category_filter=category_filter,
+                           comments_map=comments_map)
 
 @app.route("/submit", methods=["POST"])
 @login_required
 def submit():
-    ticket = request.form["ticket"]
-    categories, tone, risk, bias = analyze_ticket_with_ai(ticket)
+    ticket_text = request.form["ticket"]
+    
+    # Handle File Upload
+    attachment_filename = None
+    if 'attachment' in request.files:
+        file = request.files['attachment']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(f"{session['user_id']}_{int(datetime.now().timestamp())}_{file.filename}")
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            attachment_filename = filename
+
+    categories, tone, risk, bias = analyze_ticket_with_ai(ticket_text)
     response = generate_response(categories, tone)
     
-    transparency_note = "Transparency Note: This triage assignment and tone analysis were generated by the Cohere AI model. Human verification is recommended for flagged risks."
+    transparency_note = "Transparency Note: This triage assignment and tone analysis were generated by the AI model. Human verification is recommended for flagged risks."
     
     # Store in session instead of DB
     session['ticket_draft'] = {
-        'ticket_text': ticket,
+        'ticket_text': ticket_text,
         'category': ",".join(categories),
         'tone': tone,
         'response': response,
         'user_id': session['user_id'],
         'risk_level': risk,
         'bias_flag': bias,
-        'transparency_note': transparency_note
+        'transparency_note': transparency_note,
+        'attachment_path': attachment_filename
     }
     
     return render_template("result.html", 
                          categories=categories, 
                          tone=tone, 
                          response=response,
+                         attachment_filename=attachment_filename,
                          all_departments=DEPARTMENTS)
 
 @app.route("/confirm_assignment", methods=["POST"])
@@ -632,9 +710,9 @@ def confirm_assignment():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO tickets (ticket_text, category, tone, response, user_id, status, risk_level, bias_flag, transparency_note) 
-        VALUES (?,?,?,?,?,?,?,?,?)
-    """, (draft['ticket_text'], draft['category'], draft['tone'], draft['response'], draft['user_id'], "Open", draft.get('risk_level', 'Low - Standard'), draft.get('bias_flag', 'No'), draft.get('transparency_note', '')))
+        INSERT INTO tickets (ticket_text, category, tone, response, user_id, status, risk_level, bias_flag, transparency_note, attachment_path) 
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (draft['ticket_text'], draft['category'], draft['tone'], draft['response'], draft['user_id'], "Open", draft.get('risk_level', 'Low - Standard'), draft.get('bias_flag', 'No'), draft.get('transparency_note', ''), draft.get('attachment_path')))
     ticket_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -789,26 +867,81 @@ def audit():
 @app.route("/view")
 @login_required
 def view():
+    search = request.args.get('search', '')
+    status_filter = request.args.get('status', '')
+    category_filter = request.args.get('category', '')
+
     conn = get_db()
-    if session.get('role') == 'admin':
-        tickets = conn.execute("""
-            SELECT t.*, u.username as sender_name, a.username as agent_name
-            FROM tickets t 
-            JOIN users u ON t.user_id = u.id 
-            LEFT JOIN users a ON t.assigned_to = a.id
-            ORDER BY t.created_at DESC
-        """).fetchall()
-    else:
-        tickets = conn.execute("""
-            SELECT t.*, u.username as sender_name, a.username as agent_name
-            FROM tickets t 
-            JOIN users u ON t.user_id = u.id 
-            LEFT JOIN users a ON t.assigned_to = a.id
-            WHERE t.user_id=? 
-            ORDER BY t.created_at DESC
-        """, (session.get('user_id'),)).fetchall()
+    query = """
+        SELECT t.*, u.username as sender_name, a.username as agent_name
+        FROM tickets t 
+        JOIN users u ON t.user_id = u.id 
+        LEFT JOIN users a ON t.assigned_to = a.id
+        WHERE 1=1
+    """
+    params = []
+    
+    if session.get('role') != 'admin':
+        query += " AND t.user_id = ?"
+        params.append(session.get('user_id'))
+        
+    if search:
+        query += " AND (t.ticket_text LIKE ? OR t.id LIKE ?)"
+        params.extend([f'%{search}%', f'%{search}%'])
+    if status_filter:
+        query += " AND t.status = ?"
+        params.append(status_filter)
+    if category_filter:
+        query += " AND t.category LIKE ?"
+        params.append(f'%{category_filter}%')
+
+    query += " ORDER BY t.created_at DESC"
+    tickets = conn.execute(query, params).fetchall()
+
+    # Fetch comments for these tickets
+    ticket_ids = [t['id'] for t in tickets]
+    comments_map = {}
+    if ticket_ids:
+        placeholders = ','.join(['?'] * len(ticket_ids))
+        comments = conn.execute(f"""
+            SELECT c.*, u.username 
+            FROM comments c 
+            JOIN users u ON c.user_id = u.id 
+            WHERE c.ticket_id IN ({placeholders})
+            ORDER BY c.created_at ASC
+        """, ticket_ids).fetchall()
+        for c in comments:
+            if c['ticket_id'] not in comments_map:
+                comments_map[c['ticket_id']] = []
+            comments_map[c['ticket_id']].append(dict(c))
+
     conn.close()
-    return render_template("view.html", tickets=tickets)
+    return render_template("view.html", tickets=tickets, 
+                           search=search, status_filter=status_filter, category_filter=category_filter,
+                           comments_map=comments_map)
+
+@app.route("/add_comment/<int:ticket_id>", methods=["POST"])
+@login_required
+def add_comment(ticket_id):
+    comment_text = request.form.get("comment")
+    if not comment_text:
+        return redirect(request.referrer)
+        
+    conn = get_db()
+    # Basic check if user can comment
+    ticket = conn.execute("SELECT user_id FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    if ticket:
+        if session.get('role') == 'admin' or ticket['user_id'] == session.get('user_id'):
+            conn.execute("INSERT INTO comments (ticket_id, user_id, comment_text) VALUES (?, ?, ?)",
+                         (ticket_id, session['user_id'], comment_text))
+            conn.commit()
+    conn.close()
+    return redirect(request.referrer)
+
+@app.route("/uploads/<filename>")
+@login_required
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ---------------- API: SUMMARY ----------------
 @app.route("/api/summary")
