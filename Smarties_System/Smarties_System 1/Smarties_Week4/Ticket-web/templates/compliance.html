@@ -215,19 +215,19 @@
         <button id="themeToggleBtn" aria-label="Toggle Theme"><i class="fas fa-adjust"></i></button>
     </div>
 
-    <!-- Match the Dashboard's Header -->
     <header>
-        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit;">
-            <h1><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
+        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:25px;">
+            <h1 style="font-size: 24px;"><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
             <div class="user-info" style="border-left: 1px solid rgba(255,255,255,0.3); padding-left: 20px; text-align: left;">
                 <div style="font-size: 13px; opacity: 0.9;">Welcome, <strong>{{ session.username }}</strong></div>
                 <div style="margin-top: 2px;"><span class="badge">{{ session.role.upper() }}</span></div>
             </div>
         </a>
-        
-        <!-- Quick Nav actions -->
-        <div style="display: flex; gap:10px;">
-            <a href="{{ url_for('dashboard') }}" class="logout-btn" style="background: rgba(255,255,255,0.1);"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+        <div style="display:flex; align-items:center; gap:20px;">
+            <a href="{{ url_for('notifications') }}" class="logout-btn" style="background: rgba(255,255,255,0.15); position: relative;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
+            </a>
             <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
         </div>
     </header>
@@ -322,6 +322,25 @@
         </div>
     </div>
     
+    <script>
+        function checkNotifications() {
+            fetch("{{ url_for('api_unread_notifications') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notification-badge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.innerText = data.count > 99 ? '99+' : data.count;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+        checkNotifications();
+        setInterval(checkNotifications, 10000);
+    </script>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>
 </html>

@@ -71,20 +71,42 @@
             color: rgba(255, 255, 255, 0.5);
         }
 
-        /* ---- TOPBAR ---- */
+        /* ---- TOPBAR (Standardized) ---- */
         .topbar {
             background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-            padding: 0 40px;
+            padding: 24px 30px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            height: 64px;
             position: sticky;
             top: 0;
             z-index: 100;
-            border-bottom: 2px solid var(--blue);
+            box-shadow: var(--shadow-md);
             color: white;
+            border-radius: 0;
         }
+        .header-left { display:flex; align-items:center; gap:20px; }
+        .user-info { font-size:14px; text-align: left; }
+        .badge {
+            background-color: rgba(255,255,255,0.3);
+            padding:4px 12px;
+            border-radius:20px;
+            font-size:12px;
+            font-weight:600;
+        }
+        .logout-btn {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { background-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
 
         .topbar-brand {
             display: flex;
@@ -798,7 +820,7 @@
             }
 
             .topbar {
-                padding: 0 16px;
+                padding: 16px 20px;
             }
 
             .page {
@@ -810,26 +832,22 @@
 
 <body>
 
-    <!-- TOP BAR -->
+    <!-- TOP BAR (Standardized) -->
     <header class="topbar">
-        <a href="{{ url_for('dashboard') }}" class="topbar-brand"
-            style="text-decoration:none; display:flex; align-items:center; gap:20px;">
-            <div class="icon"><i class="fa-solid fa-rocket"></i></div>
-            <div style="display:flex; align-items:center; gap:15px;">
-                <div style="border-right: 1px solid rgba(255,255,255,0.3); padding-right: 15px;">
-                    <span style="font-size: 18px; font-weight: 700;">Smarties System</span>
-                    <small style="display:block; opacity: 0.7; font-size: 10px;">Reporting Module</small>
-                </div>
-
+        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:25px;">
+            <h1 style="font-size: 24px; margin: 0;"><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
+            <div class="user-info" style="border-left: 1px solid rgba(255,255,255,0.3); padding-left: 20px; text-align: left;">
+                <div style="font-size: 13px; opacity: 0.9;">Welcome, <strong>{{ session.username }}</strong></div>
+                <div style="margin-top: 2px;"><span class="badge">{{ session.role.upper() }}</span></div>
             </div>
         </a>
-        <nav class="topbar-nav">
-            <a href="{{ url_for('dashboard') }}" class="nav-btn nav-btn-ghost"><i class="fa-solid fa-arrow-left"
-                    style="margin-right: 8px;"></i>Dashboard</a>
-            <a href="{{ url_for('audit') }}" class="nav-btn nav-btn-ghost">Audit Logs</a>
-            <!-- Theme Switcher injected by theme.js -->
-            <a href="{{ url_for('logout') }}" class="nav-btn nav-btn-primary">Logout</a>
-        </nav>
+        <div style="display:flex; align-items:center; gap:20px;">
+            <a href="{{ url_for('notifications') }}" class="logout-btn" style="background: rgba(255,255,255,0.15); position: relative;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
+            </a>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
     </header>
 
     <div class="page">
@@ -1200,6 +1218,25 @@
                 statusChart.update();
             }
         });
+    </script>
+    <script>
+        function checkNotifications() {
+            fetch("{{ url_for('api_unread_notifications') }}")
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notification-badge');
+                    if (badge) {
+                        if (data.count > 0) {
+                            badge.innerText = data.count > 99 ? '99+' : data.count;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+        }
+        checkNotifications();
+        setInterval(checkNotifications, 10000);
     </script>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>

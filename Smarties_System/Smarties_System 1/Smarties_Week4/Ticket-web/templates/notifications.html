@@ -85,8 +85,12 @@
 </head>
 <body>
     <header>
-        <a href="{{ url_for('dashboard') }}" class="nav-brand">
-            <i class="fa-solid fa-rocket"></i> Smarties System
+        <a href="{{ url_for('dashboard') }}" class="header-left" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:25px;">
+            <h1 style="font-size: 24px;"><i class="fa-solid fa-rocket" style="margin-right: 8px;"></i>Smarties System</h1>
+            <div class="user-info" style="border-left: 1px solid rgba(255,255,255,0.3); padding-left: 20px; text-align: left;">
+                <div style="font-size: 13px; opacity: 0.9;">Welcome, <strong>{{ session.username }}</strong></div>
+                <div style="margin-top: 2px;"><span class="badge" style="background-color: rgba(255,255,255,0.3); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600;">{{ session.role.upper() }}</span></div>
+            </div>
         </a>
         <div style="display:flex; align-items:center; gap:20px;">
             <a href="{{ url_for('dashboard') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">Dashboard</a>

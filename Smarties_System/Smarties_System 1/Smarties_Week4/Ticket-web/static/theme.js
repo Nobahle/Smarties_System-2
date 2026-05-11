@@ -59,3 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     syncTheme();
 });
+
+// Anti-caching: Ensure the page reloads if the user navigates back after logout
+// This prevents the browser from showing a cached version of a protected page
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+        window.location.reload();
+    }
+});
