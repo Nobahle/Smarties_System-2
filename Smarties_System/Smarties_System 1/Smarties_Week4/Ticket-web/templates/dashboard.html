@@ -299,37 +299,40 @@
     </header>
 
     <div class="container">
-        <!-- SEARCH & FILTER BAR -->
-        <div class="tickets-section" style="padding: 20px; margin-bottom: 25px;">
-            <form method="GET" action="{{ url_for('dashboard') }}" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
-                <div style="flex: 2; min-width: 250px;">
-                    <label style="font-size: 12px; margin-bottom: 5px;"><i class="fa-solid fa-magnifying-glass"></i> Search</label>
-                    <input type="text" name="search" value="{{ search }}" placeholder="ID, issue text or username..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
-                </div>
-                <div style="flex: 1; min-width: 150px;">
-                    <label style="font-size: 12px; margin-bottom: 5px;">Status</label>
-                    <select name="status" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
-                        <option value="">All Statuses</option>
-                        <option value="Open" {% if status_filter == 'Open' %}selected{% endif %}>Open</option>
-                        <option value="In Progress" {% if status_filter == 'In Progress' %}selected{% endif %}>In Progress</option>
-                        <option value="Closed" {% if status_filter == 'Closed' %}selected{% endif %}>Closed</option>
-                    </select>
-                </div>
-                <div style="flex: 1; min-width: 150px;">
-                    <label style="font-size: 12px; margin-bottom: 5px;">Category</label>
-                    <select name="category" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
-                        <option value="">All Categories</option>
-                        {% for dept in all_departments %}
-                        <option value="{{ dept }}" {% if category_filter == dept %}selected{% endif %}>{{ dept }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button type="submit" style="padding: 10px 20px;">Filter</button>
-                    <a href="{{ url_for('dashboard') }}" style="background: var(--bg-app); color: var(--text-main); border: 1px solid var(--border-dim); padding: 10px 15px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">Clear</a>
-                </div>
-            </form>
-        </div>
+        {% if session.role == 'admin' %}
+    <!-- SEARCH & FILTER BAR -->
+    <div class="tickets-section" style="padding: 20px; margin-bottom: 25px;">
+        <form method="GET" action="{{ url_for('dashboard') }}" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+            <div style="flex: 2; min-width: 250px;">
+                <label style="font-size: 12px; margin-bottom: 5px;"><i class="fa-solid fa-magnifying-glass"></i> Search</label>
+                <input type="text" name="search" value="{{ search }}" placeholder="ID, issue text or username..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 12px; margin-bottom: 5px;">Status</label>
+                <select name="status" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+                    <option value="">All Statuses</option>
+                    <option value="Open" {% if status_filter == 'Open' %}selected{% endif %}>Open</option>
+                    <option value="In Progress" {% if status_filter == 'In Progress' %}selected{% endif %}>In Progress</option>
+                    <option value="Closed" {% if status_filter == 'Closed' %}selected{% endif %}>Closed</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 12px; margin-bottom: 5px;">Category</label>
+                <select name="category" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-app); color: var(--text-main); font-size: 14px;">
+                    <option value="">All Categories</option>
+                    {% for dept in all_departments %}
+                    <option value="{{ dept }}" {% if category_filter == dept %}selected{% endif %}>{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" style="padding: 10px 20px;">Filter</button>
+                <a href="{{ url_for('dashboard') }}" style="background: var(--bg-app); color: var(--text-main); border: 1px solid var(--border-dim); padding: 10px 15px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">Clear</a>
+            </div>
+        </form>
+    </div>
+        {% endif %}
+
         {% if session.pop('show_success_modal', None) %}
         <div id="successModalOverlay" class="modal-overlay">
             <div class="modal-card">
@@ -461,61 +464,100 @@
 
         <!-- ALL TICKETS SECTION -->
         <div class="tickets-section">
-            <h2>All Tickets</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <h2 style="margin: 0;"><i class="fa-solid fa-list-check" style="margin-right: 10px; color: var(--primary);"></i> All System Tickets</h2>
+                <span class="badge" style="background: var(--bg-app); border: 1px solid var(--border-dim); color: var(--text-muted);">{{ tickets|length }} Records</span>
+            </div>
+
             {% if tickets %}
+            <div style="display: flex; flex-direction: column; gap: 20px;">
                 {% for ticket in tickets %}
-                    <div class="ticket-item">
-                        <div class="ticket-header" style="justify-content: flex-start; gap: 15px;">
-                            <span class="ticket-id">#{{ ticket['id'] }}</span>
-                            <span style="font-weight: 700; color: var(--text-main); font-size: 15px;">{{ ticket['sender_name'] }}</span>
-                            <span style="padding: 2px 10px; border-radius: 99px; font-size: 10px; font-weight: 800; text-transform: uppercase; background: var(--bg-surface); border: 1px solid var(--border-dim); color: var(--text-muted);">
-                                {{ ticket['category'] }}
-                            </span>
-                            <div style="margin-left: auto; display: flex; gap: 8px;">
-                                <form method="POST" action="{{ url_for('update_status', ticket_id=ticket['id']) }}" style="display:flex; align-items:center; gap:8px;">
-                                    <select name="status" style="padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); background: var(--bg-surface); color: var(--text-main); font-size: 11px;">
-                                        <option value="Open" {% if ticket['status']=='Open' %}selected{% endif %}>Open</option>
-                                        <option value="In Progress" {% if ticket['status']=='In Progress' %}selected{% endif %}>In Progress</option>
-                                        <option value="Resolved" {% if ticket['status']=='Resolved' %}selected{% endif %}>Resolved</option>
-                                    </select>
-                                    <button type="submit" class="update-btn" style="padding: 4px 8px; margin-left: 5px;"><i class="fa-solid fa-save"></i></button>
-                                </form>
-                                <button type="button" class="delete-btn" style="padding: 4px 8px; margin-left: 5px;" onclick="openDeleteConfirm('{{ ticket['id'] }}', '{{ url_for('delete_ticket', ticket_id=ticket['id']) }}')">
-                                    <i class="fa-solid fa-trash"></i>
+                <div class="card" style="padding: 24px; border: 1px solid var(--border-dim); background: var(--bg-app); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none'; this.style.boxShadow='none'">
+                    <!-- Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 42px; height: 42px; background: var(--primary); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);">
+                                {{ ticket['sender_name'][0]|upper }}
+                            </div>
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 800; color: var(--text-main); font-size: 16px;">{{ ticket['sender_name'] }}</span>
+                                    <span style="background: var(--primary); color: white; padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;">#{{ ticket['id'] }}</span>
+                                </div>
+                                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-regular fa-clock"></i> {{ ticket['created_at'][:16] }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <!-- Status Update Form -->
+                            <form method="POST" action="{{ url_for('update_status', ticket_id=ticket['id']) }}" style="display: flex; gap: 6px;">
+                                <select name="status" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-dim); background: var(--bg-surface); color: var(--text-main); font-size: 12px; font-weight: 700; outline: none; cursor: pointer;">
+                                    <option value="Open" {% if ticket['status']=='Open' %}selected{% endif %}>Open</option>
+                                    <option value="In Progress" {% if ticket['status']=='In Progress' %}selected{% endif %}>In Progress</option>
+                                    <option value="Resolved" {% if ticket['status']=='Resolved' %}selected{% endif %}>Resolved</option>
+                                </select>
+                                <button type="submit" class="update-btn" style="padding: 8px 12px; border-radius: 8px; background: var(--primary); color: white; border: none; cursor: pointer;" title="Save Status">
+                                    <i class="fa-solid fa-floppy-disk"></i>
                                 </button>
-                            </div>
-                        </div>
-                        <div class="ticket-text"><strong>Issue:</strong><br>{{ ticket['ticket_text'] }}</div>
-                        <div class="ticket-response">
-                            <strong>Status:</strong> 
+                            </form>
+
                             {% if ticket['requires_approval'] == 1 and ticket['is_approved'] == 0 %}
-                                <span style="color:#f59e0b; font-weight:bold;"><i class="fa-solid fa-hourglass-half"></i> AWAITING APPROVAL</span>
-                                {% if session.role == 'admin' %}
-                                    <form action="{{ url_for('approve_ticket', ticket_id=ticket['id']) }}" method="POST" style="display:inline; margin-left:10px;">
-                                        <button type="submit" style="padding:4px 10px; font-size:11px; background:#10b981;">Approve Now</button>
-                                    </form>
-                                {% endif %}
-                            {% else %}
-                                <span style="color:#10b981; font-weight:bold;"><i class="fa-solid fa-circle-check"></i> AUTOMATED PROCESSING COMPLETE</span>
+                            <form action="{{ url_for('approve_ticket', ticket_id=ticket['id']) }}" method="POST">
+                                <button type="submit" style="padding: 8px 16px; font-size: 11px; background: #10b981; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">APPROVE</button>
+                            </form>
                             {% endif %}
-                            <br><br>
-                            <strong>AI Response:</strong><br>{{ ticket['response'] }}
-                        </div>
-                        <div class="ticket-meta" style="display: flex; justify-content: space-between; border-top: 1px solid var(--border-dim); padding-top: 12px; margin-top: 15px;">
-                            <div style="display: flex; gap: 15px; font-size: 11px; color: var(--text-muted);">
-                                <span><i class="fa-regular fa-clock"></i> {{ ticket['created_at'] }}</span>
-                                <span><i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> Priority: <strong>{{ ticket['priority_level'] or 'Normal' }}</strong></span>
-                                <span><i class="fa-solid fa-face-smile" style="color: var(--primary);"></i> Tone: {{ ticket['tone'] }}</span>
-                            </div>
-                            <div style="font-size: 12px; font-weight: 700;">
-                                <i class="fa-solid fa-headset" style="margin-right: 5px; color: var(--primary);"></i> 
-                                Agent: <span style="color: var(--text-main);">{{ ticket['agent_name'] or 'AI Auto-Queue' }}</span>
-                            </div>
+
+                            <button type="button" class="delete-btn" style="padding: 8px 12px; border-radius: 8px; background: var(--error); color: white; border: none; cursor: pointer;" onclick="openDeleteConfirm('{{ ticket['id'] }}', '{{ url_for('delete_ticket', ticket_id=ticket['id']) }}')" title="Delete Ticket">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
+
+                    <!-- Meta Tags -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <span class="status-badge" style="background: rgba(59, 130, 246, 0.1); color: #1d4ed8; font-size: 10px; font-weight: 700; border: 1px solid rgba(59,130,246,0.1);">
+                            <i class="fa-solid fa-building" style="margin-right: 5px;"></i> {{ ticket['category'] }}
+                        </span>
+                        {% set priority = ticket['priority_level'] or 'Normal' %}
+                        <span class="status-badge" style="background: {{ 'rgba(239, 68, 68, 0.1)' if priority == 'High' or priority == 'Emergency' else 'rgba(245, 158, 11, 0.1)' }}; color: {{ '#dc2626' if priority == 'High' or priority == 'Emergency' else '#b45309' }}; font-size: 10px; font-weight: 700; border: 1px solid {{ 'rgba(239, 68, 68, 0.1)' if priority == 'High' or priority == 'Emergency' else 'rgba(245, 158, 11, 0.1)' }};">
+                            <i class="fa-solid fa-bolt" style="margin-right: 5px;"></i> {{ priority }}
+                        </span>
+                        <span class="status-badge" style="background: var(--bg-surface); color: var(--text-muted); font-size: 10px; font-weight: 600; border: 1px solid var(--border-dim);">
+                            <i class="fa-solid fa-headset" style="margin-right: 5px;"></i> {{ ticket['agent_name'] or 'AI Agent' }}
+                        </span>
+                    </div>
+
+                    <!-- Content -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div style="background: var(--bg-surface); padding: 18px; border-radius: 12px; border-left: 4px solid var(--primary); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+                            <div style="font-weight: 800; font-size: 10px; text-transform: uppercase; color: var(--primary); margin-bottom: 8px; letter-spacing: 0.5px;">User Request:</div>
+                            <div style="font-size: 14px; color: var(--text-main); line-height: 1.6;">{{ ticket['ticket_text'] }}</div>
+                            
+                            {% if ticket.attachment_path %}
+                            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-dim);">
+                                <a href="{{ url_for('uploaded_file', filename=ticket.attachment_path) }}" target="_blank" style="font-size: 12px; color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
+                                    <i class="fa-solid fa-paperclip"></i> View Attached Document
+                                </a>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div style="background: rgba(16, 185, 129, 0.04); padding: 18px; border-radius: 12px; border-left: 4px solid #10b981;">
+                            <div style="font-weight: 800; font-size: 10px; text-transform: uppercase; color: #10b981; margin-bottom: 8px; letter-spacing: 0.5px;">AI Automated Insight:</div>
+                            <div style="font-size: 13px; color: var(--text-main); font-style: italic; line-height: 1.6; opacity: 0.9;">{{ ticket['response'] }}</div>
+                        </div>
+                    </div>
+                </div>
                 {% endfor %}
+            </div>
             {% else %}
-                <div class="no-tickets">No tickets found.</div>
+                <div style="text-align: center; padding: 60px; color: var(--text-muted);">
+                    <i class="fa-solid fa-folder-open" style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;"></i>
+                    <p style="font-size: 18px; font-weight: 600;">No tickets found matching your criteria.</p>
+                    <a href="{{ url_for('dashboard') }}" style="color: var(--primary); text-decoration: none; margin-top: 10px; display: inline-block;">Clear all filters</a>
+                </div>
             {% endif %}
         </div>
         {% endif %}

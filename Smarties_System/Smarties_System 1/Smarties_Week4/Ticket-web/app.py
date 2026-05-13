@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 # Optional ReportLab if installed
 try:
     from reportlab.lib.pagesizes import letter, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
     REPORTLAB_AVAILABLE = True
@@ -35,9 +35,12 @@ if os.path.exists(env_path):
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.charts.legends import Legend
 
 # ---------------- KEYWORDS ----------------
 IT_KEYWORDS = ["password","computer","wifi","laptop","printer","email","system","software","network","login","internet","server","bug","error","update","pc"]
@@ -280,9 +283,17 @@ def run_automation_engine(ticket_id):
             auto_priority = rule['target_priority']
             break
 
-    # 2. Trigger Approval Workflow for High-Risk or Finance tickets
+    # 2. Trigger Approval Workflow for Critical Departments or Risk Flags
     requires_approval = 0
-    if "Finance" in (auto_assigned_dept or ticket['category']) or ticket['tone'] == 'Urgent':
+    
+    # Check for sensitive departments
+    is_sensitive_dept = any(dept in (auto_assigned_dept or ticket['category'] or "") for dept in ["Finance", "HR"])
+    
+    # Check for AI-detected risks
+    is_high_risk = "High" in (ticket['risk_level'] or "")
+    is_biased = (ticket['bias_flag'] == "Yes")
+    
+    if is_sensitive_dept or ticket['tone'] == 'Urgent' or is_high_risk or is_biased:
         requires_approval = 1
 
     # 3. Find target user to assign (Mock logic: assign to first person in that department)
@@ -458,7 +469,7 @@ def get_report_data(department=None, period_days=7):
 
     total       = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter}", params)
     prev_total  = q(f"SELECT COUNT(*) FROM tickets WHERE {prev_filter}", prev_params)
-    resolved    = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='Closed'", params)
+    resolved    = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='Resolved'", params)
     in_progress = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='In Progress'", params)
     open_t      = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='Open'", params)
     users_count = q(f"SELECT COUNT(DISTINCT user_id) FROM tickets WHERE {base_filter}", params)
@@ -481,7 +492,7 @@ def get_report_data(department=None, period_days=7):
 
         dept_breakdown[dept] = {
             "total":    cur_d_total,
-            "resolved": q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ? AND status='Closed'", p2),
+            "resolved": q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ? AND status='Resolved'", p2),
             "open":     q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ? AND status='Open'", p2),
         }
 
@@ -491,7 +502,15 @@ def get_report_data(department=None, period_days=7):
         tone_data[tone] = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND tone=?", p3)
 
     recent = conn.execute(
-        f"SELECT id, ticket_text, category, tone, status, created_at FROM tickets WHERE {base_filter} ORDER BY created_at DESC LIMIT 10",
+        f"""
+        SELECT t.id, t.ticket_text, t.category, t.tone, t.status, t.created_at, 
+               t.response, t.priority_level, t.requires_approval, t.is_approved,
+               a.username as agent_name
+        FROM tickets t
+        LEFT JOIN users a ON t.assigned_to = a.id
+        WHERE t.{base_filter} 
+        ORDER BY t.created_at DESC LIMIT 10
+        """,
         params
     ).fetchall()
 
@@ -633,27 +652,9 @@ def dashboard():
     query += " ORDER BY t.created_at DESC"
     tickets = conn.execute(query, params).fetchall()
     
-    # Fetch comments for these tickets
-    ticket_ids = [t['id'] for t in tickets]
-    comments_map = {}
-    if ticket_ids:
-        placeholders = ','.join(['?'] * len(ticket_ids))
-        comments = conn.execute(f"""
-            SELECT c.*, u.username 
-            FROM comments c 
-            JOIN users u ON c.user_id = u.id 
-            WHERE c.ticket_id IN ({placeholders})
-            ORDER BY c.created_at ASC
-        """, ticket_ids).fetchall()
-        for c in comments:
-            if c['ticket_id'] not in comments_map:
-                comments_map[c['ticket_id']] = []
-            comments_map[c['ticket_id']].append(dict(c))
-
     conn.close()
     return render_template("dashboard.html", tickets=tickets, all_departments=DEPARTMENTS, 
-                           search=search, status_filter=status_filter, category_filter=category_filter,
-                           comments_map=comments_map)
+                           search=search, status_filter=status_filter, category_filter=category_filter)
 
 @app.route("/submit", methods=["POST"])
 @login_required
@@ -898,45 +899,11 @@ def view():
     query += " ORDER BY t.created_at DESC"
     tickets = conn.execute(query, params).fetchall()
 
-    # Fetch comments for these tickets
-    ticket_ids = [t['id'] for t in tickets]
-    comments_map = {}
-    if ticket_ids:
-        placeholders = ','.join(['?'] * len(ticket_ids))
-        comments = conn.execute(f"""
-            SELECT c.*, u.username 
-            FROM comments c 
-            JOIN users u ON c.user_id = u.id 
-            WHERE c.ticket_id IN ({placeholders})
-            ORDER BY c.created_at ASC
-        """, ticket_ids).fetchall()
-        for c in comments:
-            if c['ticket_id'] not in comments_map:
-                comments_map[c['ticket_id']] = []
-            comments_map[c['ticket_id']].append(dict(c))
-
     conn.close()
     return render_template("view.html", tickets=tickets, 
-                           search=search, status_filter=status_filter, category_filter=category_filter,
-                           comments_map=comments_map)
+                           search=search, status_filter=status_filter, category_filter=category_filter)
 
-@app.route("/add_comment/<int:ticket_id>", methods=["POST"])
-@login_required
-def add_comment(ticket_id):
-    comment_text = request.form.get("comment")
-    if not comment_text:
-        return redirect(request.referrer)
-        
-    conn = get_db()
-    # Basic check if user can comment
-    ticket = conn.execute("SELECT user_id FROM tickets WHERE id=?", (ticket_id,)).fetchone()
-    if ticket:
-        if session.get('role') == 'admin' or ticket['user_id'] == session.get('user_id'):
-            conn.execute("INSERT INTO comments (ticket_id, user_id, comment_text) VALUES (?, ?, ?)",
-                         (ticket_id, session['user_id'], comment_text))
-            conn.commit()
-    conn.close()
-    return redirect(request.referrer)
+
 
 @app.route("/uploads/<filename>")
 @login_required
@@ -1079,14 +1046,15 @@ def download_pdf():
                             rightMargin=20*mm, leftMargin=20*mm,
                             topMargin=20*mm, bottomMargin=20*mm)
 
+    styles        = getSampleStyleSheet()
     meta_style    = ParagraphStyle('Meta', fontSize=8, fontName='Helvetica',
                                    textColor=colors.HexColor('#94a3b8'), alignment=TA_RIGHT)
     title_style   = ParagraphStyle('T', fontSize=22, fontName='Helvetica-Bold',
-                                   textColor=colors.HexColor('#0f172a'), spaceAfter=4)
+                                   textColor=colors.HexColor('#0f172a'), spaceAfter=10)
     sub_style     = ParagraphStyle('S', fontSize=10, fontName='Helvetica',
-                                   textColor=colors.HexColor('#64748b'), spaceAfter=14)
+                                   textColor=colors.HexColor('#64748b'), spaceAfter=20)
     section_style = ParagraphStyle('Sec', fontSize=13, fontName='Helvetica-Bold',
-                                   textColor=colors.HexColor('#1e3a5f'), spaceBefore=14, spaceAfter=8)
+                                   textColor=colors.HexColor('#1e3a5f'), spaceBefore=20, spaceAfter=10)
 
     NAVY   = colors.HexColor('#1e3a5f')
     STRIPE = colors.HexColor('#f8fafc')
@@ -1094,7 +1062,7 @@ def download_pdf():
     TEXT   = colors.HexColor('#334155')
 
     def make_table(rows, col_widths, center_from=1):
-        t = Table(rows, colWidths=col_widths)
+        t = Table(rows, colWidths=col_widths, repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), NAVY),
             ('TEXTCOLOR',  (0,0), (-1,0), colors.white),
@@ -1118,61 +1086,216 @@ def download_pdf():
     elems.append(Paragraph(
         f"Department: {data['department']}  ·  Period: {data['period_label']}  ·  Generated: {data['generated_at']}", sub_style))
     elems.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#3b82f6')))
-    elems.append(Spacer(1, 10))
+    elems.append(Spacer(1, 15))
 
-    # Executive Summary
-    elems.append(Paragraph("Executive Summary", section_style))
-    elems.append(make_table(
-        [["Metric","Value"],
-         ["Total Tickets", str(data["total"])],
-         ["Resolved (Closed)", str(data["resolved"])],
-         ["In Progress", str(data["in_progress"])],
-         ["Open", str(data["open"])],
-         ["Closure Rate", f"{data['closure_rate']}%"],
-         ["Active Users", str(data["users_count"])]],
-        [100*mm, 60*mm]
-    ))
+    # Executive Summary Callout Box
+    summary_text = ""
+    if data["total"] == 0:
+        summary_text = "No tickets recorded in this period. The system is idle or filters are too narrow."
+    elif data["closure_rate"] >= 70:
+        summary_text = f"Strong performance this period. Closure rate is {data['closure_rate']}% — the team is resolving tickets efficiently."
+    elif data["closure_rate"] >= 40:
+        summary_text = f"Moderate throughput. {data['pending']} ticket(s) still pending — consider prioritising backlog clearance."
+    else:
+        summary_text = f"High backlog detected. Only {data['closure_rate']}% of tickets closed — escalation recommended."
+
+    # Callout Box for Summary (Two Rows, One Column to avoid cutoff)
+    callout_data = [
+        [Paragraph("<b>EXECUTIVE SUMMARY</b>", ParagraphStyle('CallTitle', fontSize=12, textColor=colors.white, spaceAfter=5))],
+        [Paragraph(summary_text, ParagraphStyle('CallText', fontSize=10, textColor=colors.white, leading=14))]
+    ]
+    callout_table = Table(callout_data, colWidths=[170*mm])
+    callout_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), NAVY),
+        ('LEFTPADDING', (0,0), (-1,-1), 15),
+        ('RIGHTPADDING', (0,0), (-1,-1), 15),
+        ('TOPPADDING', (0,0), (-1,-1), 15),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+    elems.append(callout_table)
+    elems.append(Spacer(1, 20))
+
+    # KPI Row with Chart
+    elems.append(Paragraph("Operational Metrics & Status Distribution", section_style))
+    
+    # Create Pie Chart
+    d = Drawing(160, 160)
+    pc = Pie()
+    pc.x = 20
+    pc.y = 20
+    pc.width = 120
+    pc.height = 120
+    pc.data = [data['resolved'], data['in_progress'], data['open']]
+    pc.labels = ['Resolved', 'In Progress', 'Open']
+    pc.sideLabels = True
+    pc.slices[0].fillColor = colors.HexColor('#10b981') # Resolved
+    pc.slices[1].fillColor = colors.HexColor('#3b82f6') # In Progress
+    pc.slices[2].fillColor = colors.HexColor('#f59e0b') # Open
+    d.add(pc)
+
+    # KPI Table on the left, Chart on the right
+    kpi_rows = [
+        ["Total Tickets", str(data["total"])],
+        ["Resolved", str(data["resolved"])],
+        ["Pending", str(data["pending"])],
+        ["Closure Rate", f"{data['closure_rate']}%"],
+        ["Active Users", str(data["users_count"])]
+    ]
+    kpi_table = make_table(kpi_rows, [60*mm, 30*mm])
+    
+    # Layout table to hold KPI and Chart side-by-side
+    layout_table = Table([[kpi_table, d]], colWidths=[100*mm, 70*mm])
+    layout_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'CENTER'),
+    ]))
+    elems.append(layout_table)
     elems.append(Spacer(1, 14))
 
+    # Predictive Insights
+    elems.append(Paragraph("Predictive Insights & Volume Forecast", section_style))
+    
+    trend_arrow = "UP" if data['trend_dir'] == 'up' else ("DOWN" if data['trend_dir'] == 'down' else "FLAT")
+    trend_color = "#ef4444" if data['trend_dir'] == 'up' else ("#10b981" if data['trend_dir'] == 'down' else "#64748b")
+    trend_text = f"<font color='{trend_color}'><b>{trend_arrow} {data['trend_perc']}%</b></font>"
+    
+    predictive_rows = [
+        ["Insight Parameter", "Value", "Notes"],
+        ["Projected Workload", str(data["forecast_total"]), f"Expected for next {data['period_days']} days"],
+        ["Volume Trend", Paragraph(trend_text, styles['Normal']), f"Comparison vs previous {data['period_days']} days"],
+    ]
+    elems.append(make_table(predictive_rows, [55*mm, 45*mm, 60*mm]))
+    elems.append(Spacer(1, 12))
+
+    # Surge Analysis Alert Box
+    surge_text = ""
+    if data["surge_dept"]:
+        surge_text = f"<b>SURGE ALERT:</b> {data['surge_dept']} is projected to experience a surge (+{data['surge_diff']} tickets). Resource re-allocation suggested."
+        surge_bg = colors.HexColor('#fffbeb')
+        surge_border = colors.HexColor('#f59e0b')
+    else:
+        surge_text = "<b>SYSTEM STATUS:</b> No major departmental ticket surges detected. Workload stability expected."
+        surge_bg = colors.HexColor('#f0fdf4')
+        surge_border = colors.HexColor('#10b981')
+    
+    surge_box = Table([[Paragraph(surge_text, ParagraphStyle('SurgeText', fontSize=10, textColor=colors.black))]], colWidths=[160*mm])
+    surge_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), surge_bg),
+        ('BOX', (0,0), (-1,-1), 1, surge_border),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ('TOPPADDING', (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+    ]))
+    elems.append(surge_box)
+    elems.append(Spacer(1, 18))
+
     # Department Breakdown
-    elems.append(Paragraph("Department Breakdown", section_style))
+    dept_section = []
+    dept_section.append(Paragraph("Departmental Performance Breakdown", section_style))
     dept_rows = [["Department","Total","Resolved","Open","Resolution Rate"]]
     for dept, s in data["dept_breakdown"].items():
         rate = f"{round(s['resolved']/s['total']*100,1)}%" if s['total'] > 0 else "N/A"
         dept_rows.append([dept, str(s["total"]), str(s["resolved"]), str(s["open"]), rate])
-    elems.append(make_table(dept_rows, [50*mm, 28*mm, 28*mm, 28*mm, 36*mm]))
-    elems.append(Spacer(1, 14))
+    dept_section.append(make_table(dept_rows, [50*mm, 28*mm, 28*mm, 28*mm, 36*mm]))
+    elems.append(KeepTogether(dept_section))
+    elems.append(Spacer(1, 15))
 
     # Tone Analysis
-    elems.append(Paragraph("Request Tone Analysis", section_style))
+    tone_section = []
+    tone_section.append(Paragraph("Request Tone Analysis (Sentimental Triage)", section_style))
     tone_total = sum(data["tone_data"].values()) or 1
-    tone_rows = [["Tone","Count","Share"]]
+    tone_rows = [["Tone Category","Ticket Count","Percentage Share"]]
     for tn, cnt in data["tone_data"].items():
         tone_rows.append([tn, str(cnt), f"{round(cnt/tone_total*100,1)}%"])
-    elems.append(make_table(tone_rows, [70*mm, 40*mm, 40*mm]))
-    elems.append(Spacer(1, 14))
+    tone_section.append(make_table(tone_rows, [70*mm, 45*mm, 45*mm]))
+    elems.append(KeepTogether(tone_section))
+    elems.append(Spacer(1, 15))
 
-    # Recent Tickets
+    # Recent Tickets (Premium Card Layout)
     if data["recent_tickets"]:
-        elems.append(Paragraph("Recent Tickets (up to 10)", section_style))
-        tr = [["#","Category","Tone","Status","Date"]]
+        elems.append(Paragraph("Operational Log: Recent Ticket Details", section_style))
+        
         for t in data["recent_tickets"]:
-            tr.append([str(t["id"]), t.get("category","")[:22],
-                       t.get("tone",""), t.get("status",""),
-                       str(t.get("created_at",""))[:10]])
-        elems.append(make_table(tr, [14*mm, 58*mm, 28*mm, 30*mm, 30*mm]))
+            # Status Color Mapping
+            s = t.get('status', 'Open')
+            status_color = colors.HexColor('#f59e0b') if s == 'Open' else (colors.HexColor('#10b981') if s == 'Resolved' else colors.HexColor('#3b82f6'))
+            
+            # 1. Card Header (ID, Status, and Delete placeholder)
+            header_data = [
+                [Paragraph(f"<b>Ticket #{t['id']}</b>", ParagraphStyle('Tid', fontSize=10, textColor=colors.white)),
+                 Paragraph(f"<font color='white'>{s.upper()}</font> &nbsp;&nbsp; <font color='white' backColor='#ef4444'>&nbsp; DELETE &nbsp;</font>", 
+                           ParagraphStyle('Tstat', fontSize=9, textColor=colors.white, alignment=TA_RIGHT))]
+            ]
+            header_tab = Table(header_data, colWidths=[85*mm, 85*mm])
+            header_tab.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,0), colors.HexColor('#3b82f6')), # Blue ID block
+                ('BACKGROUND', (1,0), (1,0), status_color), # Status color block
+                ('LEFTPADDING', (0,0), (-1,-1), 12),
+                ('RIGHTPADDING', (0,0), (-1,-1), 12),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ]))
+            
+            # 2. Card Content Table
+            priority = t.get('priority_level') or 'Normal'
+            meta_text = f"<b>Category:</b> {t['category']}  |  <b>Priority:</b> {priority}  |  <b>Created:</b> {str(t['created_at'])[:16]}"
+            
+            issue_text = f"<font color='white'><b>Issue:</b><br/>{t['ticket_text']}</font>"
+            
+            assigned = t.get('agent_name') or 'Auto-Queue'
+            status_detail_color = "#f59e0b" if (t.get('requires_approval') == 1 and t.get('is_approved') == 0) else "#10b981"
+            status_detail = "Awaiting Approval" if (t.get('requires_approval') == 1 and t.get('is_approved') == 0) else "Automated Processing Complete"
+            
+            footer_text = f"<b>Assigned To:</b> {assigned}  |  <b>Status Detail:</b> <font color='{status_detail_color}'>{status_detail}</font>"
+            
+            ai_dot_color = "#ef4444" if s == 'Open' else "#10b981"
+            ai_resp_text = f"<b>AI Response:</b> <font color='{ai_dot_color}'>●</font> {t['response']}"
+            
+            card_content_data = [
+                [Paragraph(meta_text, ParagraphStyle('Cmeta', fontSize=8, textColor=colors.HexColor('#64748b')))],
+                [Paragraph(issue_text, ParagraphStyle('Cissue', fontSize=9, textColor=colors.white, leading=14, 
+                                                     backColor=colors.HexColor('#1e293b'), borderPadding=12, borderRadius=6))],
+                [Paragraph(footer_text, ParagraphStyle('Cfooter', fontSize=8, textColor=colors.HexColor('#64748b')))],
+                [Paragraph(ai_resp_text, ParagraphStyle('Cai', fontSize=9, textColor=colors.HexColor('#1e3a5f'), leading=14))]
+            ]
+            
+            content_tab = Table(card_content_data, colWidths=[170*mm])
+            content_tab.setStyle(TableStyle([
+                ('TOPPADDING', (0,0), (-1,-1), 8),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('LEFTPADDING', (0,0), (-1,-1), 12),
+                ('RIGHTPADDING', (0,0), (-1,-1), 12),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ]))
+            
+            # Wrap Header and Content in a single block
+            full_card = Table([[header_tab], [content_tab]], colWidths=[170*mm])
+            full_card.setStyle(TableStyle([
+                ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,1), (0,1), 10),
+            ]))
+            
+            elems.append(KeepTogether(full_card))
+            elems.append(Spacer(1, 15))
 
-    elems.append(Spacer(1, 20))
+    elems.append(Spacer(1, 15))
     elems.append(HRFlowable(width="100%", thickness=0.5, color=GRID))
     elems.append(Spacer(1, 6))
     elems.append(Paragraph(
-        f"Confidential — AI Business Operations Platform · {data['generated_at']} · Admin: {session.get('username')}",
+        f"Generated by Smarties AI Engine · {data['generated_at']} · Report generated by: {session.get('username')}",
         meta_style))
 
     doc.build(elems)
     buffer.seek(0)
     
-    fname = f"Smarties_Weekly_Business_Report_{department}_{period_days}d.pdf"
+    fname = f"Smarties_Business_Report_{department}_{period_days}d.pdf"
     
     return send_file(
         buffer,

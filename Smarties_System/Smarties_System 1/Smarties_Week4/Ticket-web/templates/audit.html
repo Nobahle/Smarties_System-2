@@ -290,6 +290,12 @@
         </div>
     </header>
 
+    <div style="margin-bottom: 25px;">
+        <a href="{{ url_for('dashboard') }}" class="back-btn">
+            <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
         <div class="tabs-container">
             <div class="tab active" onclick="switchTab('all', this)">All Activity</div>
             <div class="tab" onclick="switchTab('tickets', this)">Ticket Lifecycle</div>
