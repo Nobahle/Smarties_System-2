@@ -58,6 +58,31 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.setAttribute('data-theme', theme);
     };
     syncTheme();
+
+    // 5. Back to Top Logic
+    const backToTopHTML = `
+        <button id="backToTop" title="Back to Top">
+            <i class="fas fa-arrow-up"></i>
+        </button>
+    `;
+    if (!document.getElementById('backToTop')) {
+        document.body.insertAdjacentHTML('beforeend', backToTopHTML);
+    }
+
+    const backToTopBtn = document.getElementById('backToTop');
+    if (backToTopBtn) {
+        window.addEventListener('scroll', () => {
+            if (window.pageYOffset > 400) {
+                backToTopBtn.classList.add('show');
+            } else {
+                backToTopBtn.classList.remove('show');
+            }
+        });
+
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
 });
 
 // Anti-caching: Ensure the page reloads if the user navigates back after logout

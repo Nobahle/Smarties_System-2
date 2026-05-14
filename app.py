@@ -1029,48 +1029,52 @@ def download_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # 1. REPORT HEADER
-    writer.writerow(['SMARTIES WEEKLY BUSINESS REPORT'])
-    writer.writerow(['Department', data['department']])
-    writer.writerow(['Period', data['period_label']])
-    writer.writerow(['Generated At', data['generated_at']])
-    writer.writerow([]) # Spacer
+    # --- REPORT METADATA ---
+    writer.writerow(['SMARTIES BUSINESS INTELLIGENCE REPORT'])
+    writer.writerow(['REPORT TYPE:', 'WEEKLY PERFORMANCE SUMMARY'])
+    writer.writerow(['DEPARTMENT:', data['department'].upper()])
+    writer.writerow(['PERIOD:', data['period_label']])
+    writer.writerow(['GENERATED AT:', data['generated_at']])
+    writer.writerow([])
 
-    # 2. EXECUTIVE SUMMARY
-    writer.writerow(['EXECUTIVE SUMMARY'])
-    writer.writerow(['Metric', 'Value'])
-    writer.writerow(['Total Tickets', data['total']])
-    writer.writerow(['Resolved (Closed)', data['resolved']])
-    writer.writerow(['In Progress', data['in_progress']])
-    writer.writerow(['Open', data['open']])
-    writer.writerow(['Closure Rate', f"{data['closure_rate']}%"])
-    writer.writerow(['Active Users', data['users_count']])
-    writer.writerow([]) # Spacer
+    # --- SECTION 1: EXECUTIVE PERFORMANCE SUMMARY ---
+    writer.writerow(['SECTION 1: EXECUTIVE PERFORMANCE SUMMARY'])
+    writer.writerow(['Key Performance Indicator', 'Current Value', 'Target Status'])
+    
+    closure_status = "STABLE"
+    if data['closure_rate'] < 50: closure_status = "ACTION REQUIRED"
+    elif data['closure_rate'] > 85: closure_status = "EXCEEDS TARGET"
 
-    # 3. DEPARTMENT BREAKDOWN
-    writer.writerow(['DEPARTMENT BREAKDOWN'])
-    writer.writerow(['Department', 'Total', 'Resolved', 'Open', 'Resolution Rate'])
+    writer.writerow(['Total Volume', data['total'], 'N/A'])
+    writer.writerow(['Resolved Tickets', data['resolved'], 'COMPLETED'])
+    writer.writerow(['Active Workload', data['pending'], 'IN QUEUE'])
+    writer.writerow(['Closure Rate', f"{data['closure_rate']}%", closure_status])
+    writer.writerow(['Unique Requesters', data['users_count'], 'N/A'])
+    writer.writerow([])
+
+    # --- SECTION 2: DEPARTMENTAL PERFORMANCE BREAKDOWN ---
+    writer.writerow(['SECTION 2: DEPARTMENTAL PERFORMANCE BREAKDOWN'])
+    writer.writerow(['Department', 'Total Tickets', 'Resolved', 'Open', 'Resolution Rate (%)'])
     for dept, s in data["dept_breakdown"].items():
-        rate = f"{round(s['resolved']/s['total']*100,1)}%" if s['total'] > 0 else "N/A"
-        writer.writerow([dept, s['total'], s['resolved'], s['open'], rate])
-    writer.writerow([]) # Spacer
+        rate = round(s['resolved']/s['total']*100,2) if s['total'] > 0 else 0.00
+        writer.writerow([dept, s['total'], s['resolved'], s['open'], f"{rate}%"])
+    writer.writerow([])
 
-    # 4. TONE ANALYSIS
-    writer.writerow(['TONE ANALYSIS'])
-    writer.writerow(['Tone', 'Count', 'Share'])
+    # --- SECTION 3: SENTIMENT AND TONE ANALYSIS ---
+    writer.writerow(['SECTION 3: SENTIMENT AND TONE ANALYSIS'])
+    writer.writerow(['Tone Category', 'Total Count', 'Percentage of Total'])
     tone_total = sum(data["tone_data"].values()) or 1
     for tn, cnt in data["tone_data"].items():
-        writer.writerow([tn, cnt, f"{round(cnt/tone_total*100,1)}%"])
-    writer.writerow([]) # Spacer
+        writer.writerow([tn, cnt, f"{round(cnt/tone_total*100,2)}%"])
+    writer.writerow([])
 
-    # 5. DETAILED TICKET DATA (ALL FOR PERIOD)
-    writer.writerow(['DETAILED TICKET DATA'])
-    writer.writerow(['ID', 'Issue', 'Category', 'Tone', 'Response', 'User ID', 'Status', 'Created At'])
+    # --- SECTION 4: DETAILED OPERATIONAL LOG ---
+    writer.writerow(['SECTION 4: DETAILED OPERATIONAL LOG'])
+    writer.writerow(['Ticket ID', 'Status', 'Department', 'Tone', 'Priority', 'Timestamp', 'Subject Preview'])
     
-    # Query all tickets for the period (not just recent 10)
     cutoff = (datetime.now() - timedelta(days=period_days)).strftime('%Y-%m-%d %H:%M:%S')
     conn = get_db()
-    sql = "SELECT id, ticket_text, category, tone, response, user_id, status, created_at FROM tickets WHERE created_at >= ?"
+    sql = "SELECT id, status, category, tone, priority_level, created_at, ticket_text FROM tickets WHERE created_at >= ?"
     params = [cutoff]
     if department != "All":
         sql += " AND category LIKE ?"
@@ -1080,9 +1084,15 @@ def download_csv():
     conn.close()
 
     for t in tickets:
-        writer.writerow([t['id'], t['ticket_text'], t['category'], t['tone'], t['response'], t['user_id'], t['status'], t['created_at']])
+        preview = t['ticket_text'][:80].replace('\n', ' ') + '...' if len(t['ticket_text']) > 80 else t['ticket_text']
+        writer.writerow([t['id'], t['status'], t['category'], t['tone'], t['priority_level'], t['created_at'], preview])
     
+    writer.writerow([])
+    writer.writerow(['*** CONFIDENTIAL: SMARTIES SYSTEM INTERNAL REPORT ***'])
+
     mem = io.BytesIO()
+    mem.write(b'\xef\xbb\xbf') 
+    mem.write(b'sep=,\n')
     mem.write(output.getvalue().encode('utf-8'))
     mem.seek(0)
     
@@ -1090,7 +1100,7 @@ def download_csv():
         mem,
         mimetype="text/csv",
         as_attachment=True,
-        download_name=f"Smarties_Weekly_Business_Report_{department}_{period_days}d.csv"
+        download_name=f"Smarties_Business_Report_{department}_{period_days}d.csv"
     )
 
 # ---------------- DOWNLOAD PDF ----------------
