@@ -415,7 +415,7 @@
                     <textarea name="ticket" id="ticket" placeholder="Describe your problem..." required></textarea>
                 </div>
                 <button type="submit">Submit Ticket</button>
-                <a href="{{ url_for('view') }}" style="margin-left:15px; text-decoration:none; font-weight:bold; color:var(--primary);">View My Tickets</a>
+                <a href="{{ url_for('view') }}" style="margin-left:15px; text-decoration:none; font-weight:bold; color:var(--primary);">View Tickets</a>
             </form>
         </div>
         {% endif %}
@@ -507,6 +507,12 @@
                             <form action="{{ url_for('approve_ticket', ticket_id=ticket['id']) }}" method="POST">
                                 <button type="submit" style="padding: 8px 16px; font-size: 11px; background: #10b981; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">APPROVE</button>
                             </form>
+                            {% endif %}
+
+                            {% if ticket['status'] != 'Resolved' %}
+                            <a href="{{ url_for('chat', ticket_id=ticket['id']) }}" class="update-btn" style="background: var(--primary) !important; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);" title="Discuss this case">
+                                <i class="fa-solid fa-comments"></i> Discussion
+                            </a>
                             {% endif %}
 
                             <button type="button" class="delete-btn" style="padding: 8px 12px; border-radius: 8px; background: var(--error); color: white; border: none; cursor: pointer;" onclick="openDeleteConfirm('{{ ticket['id'] }}', '{{ url_for('delete_ticket', ticket_id=ticket['id']) }}')" title="Delete Ticket">

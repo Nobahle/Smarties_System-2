@@ -238,7 +238,7 @@
         </script>
         {% endif %}
 
-        <h2>{% if session.role == 'admin' %}All Tickets{% else %}My Tickets{% endif %}</h2>
+        <h2>{% if session.role == 'admin' %}All Tickets{% else %}Tickets{% endif %}</h2>
 
         {% if error %}
             <div class="no-tickets" style="color:red;">Error: {{ error }}</div>
@@ -270,6 +270,9 @@
                             </form>
                             {% endif %}
 
+                            {% if t['status'] != 'Resolved' %}
+                            <a href="{{ url_for('chat', ticket_id=t['id']) }}" class="update-btn" style="text-decoration: none; margin-right: 8px;">Discussion</a>
+                            {% endif %}
                             <button type="button" class="delete-btn" onclick="openDeleteConfirm('{{ t['id'] }}', '{{ url_for('delete_ticket', ticket_id=t['id']) }}')">Delete</button>
                         </div>
                     </div>

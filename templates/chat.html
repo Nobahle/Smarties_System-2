@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Discussion — Smarties System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <style>
+        .chat-container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: var(--bg-card);
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            overflow: hidden;
+            border: 1px solid var(--border-dim);
+        }
+
+        .chat-header {
+            padding: 20px 24px;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .chat-header .ticket-id {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: var(--bg-app);
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+        }
+
+        .message.sent {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.received {
+            align-self: flex-start;
+            background: var(--bg-card);
+            color: var(--text-main);
+            border: 1px solid var(--border-dim);
+            border-bottom-left-radius: 2px;
+        }
+
+        .message-meta {
+            font-size: 10px;
+            margin-bottom: 4px;
+            opacity: 0.8;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .message.sent .message-meta {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .message.received .message-meta {
+            color: var(--text-muted);
+        }
+
+        .chat-input-area {
+            padding: 20px 24px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-dim);
+        }
+
+        .chat-form {
+            display: flex;
+            gap: 12px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border-dim);
+            border-radius: 8px;
+            background: var(--bg-app);
+            color: var(--text-main);
+            font-family: inherit;
+            resize: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .send-btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--primary);
+        }
+
+        .ticket-context {
+            padding: 12px 24px;
+            background: var(--bg-app);
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .empty-chat {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 100px;
+        }
+        .end-chat-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .end-chat-btn:hover {
+            background: var(--error);
+            border-color: var(--error);
+            transform: translateY(-1px);
+        }
+
+        .attachment-preview {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .attachment-preview img, .attachment-preview video {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 4px;
+            display: block;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 40px;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-btn {
+            background: var(--bg-surface);
+            color: var(--text-muted);
+            border: 1.5px solid var(--border-dim);
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-btn:hover {
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .file-btn.has-file {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .status-resolved {
+            background: #10b981 !important;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-content" style="padding: 40px 20px;">
+        <div style="max-width: 900px; margin: 0 auto;">
+            <a href="{{ url_for('dashboard') if session['role'] == 'admin' else url_for('view') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <div>
+                    <h2>Case Discussion</h2>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                        <span class="ticket-id">Ticket #{{ ticket.id }}</span>
+                        <span style="font-size: 13px; opacity: 0.9; font-weight: 500;">&bull; Requester: <strong>{{ ticket.requester_name }}</strong></span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="status-badge {{ 'status-resolved' if ticket.status == 'Resolved' else '' }}" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                        Status: {{ ticket.status }}
+                    </div>
+                    {% if ticket.status != 'Resolved' %}
+                    <form action="{{ url_for('end_chat', ticket_id=ticket.id) }}" method="POST" style="margin: 0;">
+                        <button type="submit" class="end-chat-btn" onclick="return confirm('Are you sure you want to resolve this ticket and end the discussion?')">
+                            <i class="fas fa-check-circle"></i> End Chat
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="ticket-context">
+                <i class="fas fa-quote-left" style="margin-right: 8px; opacity: 0.5;"></i>
+                <strong>Original Request:</strong> {{ ticket.ticket_text[:200] }}{% if ticket.ticket_text|length > 200 %}...{% endif %}
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                {% if not messages %}
+                    <div class="empty-chat">
+                        <i class="fas fa-comments" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                        <p>No messages yet. Start the conversation below.</p>
+                    </div>
+                {% else %}
+                    {% for msg in messages %}
+                        <div class="message {{ 'sent' if msg.user_id == session['user_id'] else 'received' }}">
+                            <div class="message-meta">
+                                <strong>{{ 'You' if msg.user_id == session['user_id'] else msg.username }} ({{ msg.user_role }})</strong>
+                                <span>{{ msg.timestamp }}</span>
+                            </div>
+                            <div class="message-content">
+                                {{ msg.message }}
+                                {% if msg.attachment_path %}
+                                <div class="attachment-preview">
+                                    {% set ext = msg.attachment_path.split('.')[-1].lower() %}
+                                    {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                                        <a href="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" target="_blank">
+                                            <img src="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" alt="Attachment">
+                                        </a>
+                                    {% elif ext in ['mp4', 'mov', 'avi', 'mkv'] %}
+                                        <video controls>
+                                            <source src="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" type="video/{{ 'quicktime' if ext == 'mov' else 'mp4' }}">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    {% else %}
+                                        <a href="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" target="_blank" style="display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: underline;">
+                                            <i class="fas fa-file-alt"></i> Download Attachment ({{ ext.upper() }})
+                                        </a>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="chat-input-area">
+                {% if ticket.status != 'Resolved' %}
+                <form class="chat-form" method="POST" enctype="multipart/form-data">
+                    <div class="file-input-wrapper">
+                        <label class="file-btn" id="fileBtn" title="Attach file">
+                            <i class="fas fa-paperclip"></i>
+                        </label>
+                        <input type="file" name="attachment" id="attachment" onchange="updateFileIcon()">
+                    </div>
+                    <textarea name="message" class="chat-input" placeholder="Type your message here..." rows="1"></textarea>
+                    <button type="submit" class="send-btn">
+                        <i class="fas fa-paper-plane"></i> Send
+                    </button>
+                </form>
+                {% else %}
+                <div style="text-align: center; color: var(--text-muted); padding: 10px; font-weight: 600;">
+                    <i class="fas fa-lock" style="margin-right: 8px;"></i> This conversation has ended as the ticket is resolved.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script>
+        // Auto-scroll to bottom of chat
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Auto-resize textarea
+        const textarea = document.querySelector('.chat-input');
+        if (textarea) {
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+        }
+
+        function updateFileIcon() {
+            const input = document.getElementById('attachment');
+            const btn = document.getElementById('fileBtn');
+            if (input.files && input.files.length > 0) {
+                btn.classList.add('has-file');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                btn.title = "File selected: " + input.files[0].name;
+            } else {
+                btn.classList.remove('has-file');
+                btn.innerHTML = '<i class="fas fa-paperclip"></i>';
+                btn.title = "Attach file";
+            }
+        }
+    </script>
+</body>
+</html>

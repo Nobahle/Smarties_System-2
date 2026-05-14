@@ -94,7 +94,7 @@
         </a>
         <div style="display:flex; align-items:center; gap:20px;">
             <a href="{{ url_for('dashboard') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">Dashboard</a>
-            <a href="{{ url_for('view') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">My Tickets</a>
+            <a href="{{ url_for('view') }}" style="color:white; text-decoration:none; font-weight:600; font-size:14px;">Tickets</a>
             <a href="{{ url_for('notifications') }}" style="background: rgba(255,255,255,0.15); position: relative; color: white; padding: 8px 15px; border-radius: 8px; text-decoration: none;">
                 <i class="fa-solid fa-bell"></i>
                 <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #ef4444; color: white; border-radius: 50%; display: none; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; border: 2px solid var(--primary);">0</span>
@@ -131,6 +131,7 @@
                                 <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Event Details</th>
                                 <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Action Performed By</th>
                                 <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Time</th>
+                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -148,6 +149,16 @@
                                     <td style="padding: 16px; color: var(--text-muted); font-size: 13px;">
                                         {{ note.created_at }}
                                     </td>
+                                    <td style="padding: 16px;">
+                                        {% if note.type == 'Chat' %}
+                                            {% set tid = note.message.split('#')[1].split(' ')[0].split('.')[0] %}
+                                            <a href="{{ url_for('chat', ticket_id=tid) }}" style="display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 700; transition: all 0.2s;">
+                                                <i class="fa-solid fa-comments"></i> View Chat
+                                            </a>
+                                        {% else %}
+                                            <span style="color: var(--text-muted); font-size: 11px; font-style: italic;">Log Only</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -163,6 +174,18 @@
                         </div>
                         <div class="notification-message">
                             {{ note.message }}
+                            
+                            {% if note.type == 'Chat' %}
+                                <div style="margin-top: 15px;">
+                                    {% set parts = note.message.split('#') %}
+                                    {% if parts|length > 1 %}
+                                        {% set tid = parts[1].split(' ')[0].split('.')[0] %}
+                                        <a href="{{ url_for('chat', ticket_id=tid) }}" style="display: inline-flex; align-items: center; gap: 8px; background: var(--primary); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 700; transition: all 0.2s; box-shadow: var(--shadow-sm);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none'; this.style.boxShadow='var(--shadow-sm)'">
+                                            <i class="fa-solid fa-comments"></i> View Discussion
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
                 {% endfor %}

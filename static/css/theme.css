@@ -177,3 +177,41 @@ body {
     opacity: 1;
 }
 .centered-toast i { font-size: 64px; }
+
+/* Back to Top Button */
+#backToTop {
+    position: fixed;
+    bottom: 25px; /* Aligned with the theme switcher height */
+    left: 25px;   /* Moved to the left side as requested */
+    width: 48px;
+    height: 48px;
+    background-color: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-lg);
+    font-size: 18px;
+}
+
+#backToTop.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+#backToTop:not(.show) {
+    transform: translateY(20px);
+}
+
+#backToTop:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-5px) scale(1.05);
+}

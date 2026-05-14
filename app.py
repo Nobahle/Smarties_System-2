@@ -61,7 +61,7 @@ app.secret_key = 'your-secret-key-here'
 UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log', 'mp4', 'mov', 'avi', 'mkv', 'doc', 'docx', 'xls', 'xlsx'}
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -113,16 +113,29 @@ def init_db():
     )
     """)
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action TEXT,
-        table_name TEXT,
-        record_id INTEGER,
-        old_value TEXT,
-        new_value TEXT,
-        performed_by TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT,
+            table_name TEXT,
+            row_id INTEGER,
+            old_value TEXT,
+            new_value TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            performer TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER,
+            user_id INTEGER,
+            message TEXT,
+            attachment_path TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(ticket_id) REFERENCES tickets(id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
     """)
     
     cursor.execute("""
@@ -177,6 +190,9 @@ def init_db():
     except: pass
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN department TEXT")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE ticket_messages ADD COLUMN attachment_path TEXT")
     except: pass
 
     # Seed some default automation rules if table is empty
@@ -804,7 +820,7 @@ def notifications():
             SELECT n.*, u.username as target_user 
             FROM notifications n
             JOIN users u ON n.user_id = u.id
-            WHERE n.type = 'Global'
+            WHERE n.type IN ('Global', 'Chat')
             ORDER BY n.created_at DESC
         """).fetchall()
     else:
@@ -967,6 +983,102 @@ def view():
 
 
 
+@app.route("/chat/<int:ticket_id>", methods=["GET", "POST"])
+@login_required
+def chat(ticket_id):
+    conn = get_db()
+    # Fetch ticket along with requester name
+    ticket = conn.execute("""
+        SELECT t.*, u.username as requester_name 
+        FROM tickets t 
+        JOIN users u ON t.user_id = u.id 
+        WHERE t.id = ?
+    """, (ticket_id,)).fetchone()
+    
+    if not ticket:
+        conn.close()
+        return "Ticket not found", 404
+    
+    # Permissions: Admin can see all, Users can only see their own tickets
+    if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
+        conn.close()
+        return "Unauthorized", 403
+        
+    if request.method == "POST":
+        message_text = request.form.get("message")
+        
+        # Handle Chat Attachment
+        attachment_filename = None
+        if 'attachment' in request.files:
+            file = request.files['attachment']
+            if file and file.filename != '' and allowed_file(file.filename):
+                user_id = session['user_id']
+                user_folder = os.path.join(app.config['UPLOAD_FOLDER'], f"user_{user_id}")
+                if not os.path.exists(user_folder):
+                    os.makedirs(user_folder)
+                
+                filename = secure_filename(f"chat_{int(datetime.now().timestamp())}_{file.filename}")
+                file.save(os.path.join(user_folder, filename))
+                attachment_filename = f"user_{user_id}/{filename}"
+
+        if message_text or attachment_filename:
+            conn.execute("INSERT INTO ticket_messages (ticket_id, user_id, message, attachment_path) VALUES (?, ?, ?, ?)",
+                         (ticket_id, session['user_id'], message_text, attachment_filename))
+            conn.commit()
+            
+            # Smart Notifications
+            if session.get('role') == 'admin':
+                # Notify the ticket owner
+                create_notification(ticket['user_id'], f"Admin responded to your discussion on Ticket #{ticket_id}.", "Chat")
+            else:
+                # Notify all admins with the user's name for clarity
+                user_name = session.get('username', 'User')
+                admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
+                for admin in admins:
+                    create_notification(admin['id'], f"User {user_name} responded to Ticket #{ticket_id} discussion.", "Chat")
+                    
+    messages = conn.execute("""
+        SELECT m.*, u.username, u.role as user_role
+        FROM ticket_messages m 
+        JOIN users u ON m.user_id = u.id 
+        WHERE m.ticket_id = ? 
+        ORDER BY m.timestamp ASC
+    """, (ticket_id,)).fetchall()
+    
+    conn.close()
+    return render_template("chat.html", ticket=ticket, messages=messages)
+
+@app.route("/end_chat/<int:ticket_id>", methods=["POST"])
+@login_required
+def end_chat(ticket_id):
+    conn = get_db()
+    ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return "Ticket not found", 404
+        
+    # Only admin or ticket owner can end chat
+    if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
+        conn.close()
+        return "Unauthorized", 403
+        
+    conn.execute("UPDATE tickets SET status='Resolved' WHERE id=?", (ticket_id,))
+    conn.commit()
+    log_action("UPDATE", "tickets", ticket_id, ticket['status'], 'Resolved', performer=session['username'])
+    
+    # Notify other party
+    if session.get('role') == 'admin':
+        create_notification(ticket['user_id'], f"Admin has marked Ticket #{ticket_id} as resolved and ended the discussion.", "Chat")
+    else:
+        admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
+        for admin in admins:
+            create_notification(admin['id'], f"User {session['username']} marked Ticket #{ticket_id} as resolved.", "Chat")
+            
+    conn.close()
+    return redirect(url_for('dashboard') if session['role'] == 'admin' else url_for('view'))
+
+
+
 @app.route("/uploads/<path:filename>")
 @login_required
 def uploaded_file(filename):
@@ -1029,48 +1141,52 @@ def download_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # 1. REPORT HEADER
-    writer.writerow(['SMARTIES WEEKLY BUSINESS REPORT'])
-    writer.writerow(['Department', data['department']])
-    writer.writerow(['Period', data['period_label']])
-    writer.writerow(['Generated At', data['generated_at']])
-    writer.writerow([]) # Spacer
+    # --- REPORT METADATA ---
+    writer.writerow(['SMARTIES BUSINESS INTELLIGENCE REPORT'])
+    writer.writerow(['REPORT TYPE:', 'WEEKLY PERFORMANCE SUMMARY'])
+    writer.writerow(['DEPARTMENT:', data['department'].upper()])
+    writer.writerow(['PERIOD:', data['period_label']])
+    writer.writerow(['GENERATED AT:', data['generated_at']])
+    writer.writerow([])
 
-    # 2. EXECUTIVE SUMMARY
-    writer.writerow(['EXECUTIVE SUMMARY'])
-    writer.writerow(['Metric', 'Value'])
-    writer.writerow(['Total Tickets', data['total']])
-    writer.writerow(['Resolved (Closed)', data['resolved']])
-    writer.writerow(['In Progress', data['in_progress']])
-    writer.writerow(['Open', data['open']])
-    writer.writerow(['Closure Rate', f"{data['closure_rate']}%"])
-    writer.writerow(['Active Users', data['users_count']])
-    writer.writerow([]) # Spacer
+    # --- SECTION 1: EXECUTIVE PERFORMANCE SUMMARY ---
+    writer.writerow(['SECTION 1: EXECUTIVE PERFORMANCE SUMMARY'])
+    writer.writerow(['Key Performance Indicator', 'Current Value', 'Target Status'])
+    
+    closure_status = "STABLE"
+    if data['closure_rate'] < 50: closure_status = "ACTION REQUIRED"
+    elif data['closure_rate'] > 85: closure_status = "EXCEEDS TARGET"
 
-    # 3. DEPARTMENT BREAKDOWN
-    writer.writerow(['DEPARTMENT BREAKDOWN'])
-    writer.writerow(['Department', 'Total', 'Resolved', 'Open', 'Resolution Rate'])
+    writer.writerow(['Total Volume', data['total'], 'N/A'])
+    writer.writerow(['Resolved Tickets', data['resolved'], 'COMPLETED'])
+    writer.writerow(['Active Workload', data['pending'], 'IN QUEUE'])
+    writer.writerow(['Closure Rate', f"{data['closure_rate']}%", closure_status])
+    writer.writerow(['Unique Requesters', data['users_count'], 'N/A'])
+    writer.writerow([])
+
+    # --- SECTION 2: DEPARTMENTAL PERFORMANCE BREAKDOWN ---
+    writer.writerow(['SECTION 2: DEPARTMENTAL PERFORMANCE BREAKDOWN'])
+    writer.writerow(['Department', 'Total Tickets', 'Resolved', 'Open', 'Resolution Rate (%)'])
     for dept, s in data["dept_breakdown"].items():
-        rate = f"{round(s['resolved']/s['total']*100,1)}%" if s['total'] > 0 else "N/A"
-        writer.writerow([dept, s['total'], s['resolved'], s['open'], rate])
-    writer.writerow([]) # Spacer
+        rate = round(s['resolved']/s['total']*100,2) if s['total'] > 0 else 0.00
+        writer.writerow([dept, s['total'], s['resolved'], s['open'], f"{rate}%"])
+    writer.writerow([])
 
-    # 4. TONE ANALYSIS
-    writer.writerow(['TONE ANALYSIS'])
-    writer.writerow(['Tone', 'Count', 'Share'])
+    # --- SECTION 3: SENTIMENT AND TONE ANALYSIS ---
+    writer.writerow(['SECTION 3: SENTIMENT AND TONE ANALYSIS'])
+    writer.writerow(['Tone Category', 'Total Count', 'Percentage of Total'])
     tone_total = sum(data["tone_data"].values()) or 1
     for tn, cnt in data["tone_data"].items():
-        writer.writerow([tn, cnt, f"{round(cnt/tone_total*100,1)}%"])
-    writer.writerow([]) # Spacer
+        writer.writerow([tn, cnt, f"{round(cnt/tone_total*100,2)}%"])
+    writer.writerow([])
 
-    # 5. DETAILED TICKET DATA (ALL FOR PERIOD)
-    writer.writerow(['DETAILED TICKET DATA'])
-    writer.writerow(['ID', 'Issue', 'Category', 'Tone', 'Response', 'User ID', 'Status', 'Created At'])
+    # --- SECTION 4: DETAILED OPERATIONAL LOG ---
+    writer.writerow(['SECTION 4: DETAILED OPERATIONAL LOG'])
+    writer.writerow(['Ticket ID', 'Status', 'Department', 'Tone', 'Priority', 'Timestamp', 'Subject Preview'])
     
-    # Query all tickets for the period (not just recent 10)
     cutoff = (datetime.now() - timedelta(days=period_days)).strftime('%Y-%m-%d %H:%M:%S')
     conn = get_db()
-    sql = "SELECT id, ticket_text, category, tone, response, user_id, status, created_at FROM tickets WHERE created_at >= ?"
+    sql = "SELECT id, status, category, tone, priority_level, created_at, ticket_text FROM tickets WHERE created_at >= ?"
     params = [cutoff]
     if department != "All":
         sql += " AND category LIKE ?"
@@ -1080,9 +1196,15 @@ def download_csv():
     conn.close()
 
     for t in tickets:
-        writer.writerow([t['id'], t['ticket_text'], t['category'], t['tone'], t['response'], t['user_id'], t['status'], t['created_at']])
+        preview = t['ticket_text'][:80].replace('\n', ' ') + '...' if len(t['ticket_text']) > 80 else t['ticket_text']
+        writer.writerow([t['id'], t['status'], t['category'], t['tone'], t['priority_level'], t['created_at'], preview])
     
+    writer.writerow([])
+    writer.writerow(['*** CONFIDENTIAL: SMARTIES SYSTEM INTERNAL REPORT ***'])
+
     mem = io.BytesIO()
+    mem.write(b'\xef\xbb\xbf') 
+    mem.write(b'sep=,\n')
     mem.write(output.getvalue().encode('utf-8'))
     mem.seek(0)
     
@@ -1090,7 +1212,7 @@ def download_csv():
         mem,
         mimetype="text/csv",
         as_attachment=True,
-        download_name=f"Smarties_Weekly_Business_Report_{department}_{period_days}d.csv"
+        download_name=f"Smarties_Business_Report_{department}_{period_days}d.csv"
     )
 
 # ---------------- DOWNLOAD PDF ----------------
