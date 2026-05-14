@@ -113,16 +113,28 @@ def init_db():
     )
     """)
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action TEXT,
-        table_name TEXT,
-        record_id INTEGER,
-        old_value TEXT,
-        new_value TEXT,
-        performed_by TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT,
+            table_name TEXT,
+            row_id INTEGER,
+            old_value TEXT,
+            new_value TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            performer TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER,
+            user_id INTEGER,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(ticket_id) REFERENCES tickets(id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
     """)
     
     cursor.execute("""
@@ -804,7 +816,7 @@ def notifications():
             SELECT n.*, u.username as target_user 
             FROM notifications n
             JOIN users u ON n.user_id = u.id
-            WHERE n.type = 'Global'
+            WHERE n.type IN ('Global', 'Chat')
             ORDER BY n.created_at DESC
         """).fetchall()
     else:
@@ -964,6 +976,58 @@ def view():
     conn.close()
     return render_template("view.html", tickets=tickets, 
                            search=search, status_filter=status_filter, category_filter=category_filter)
+
+
+
+@app.route("/chat/<int:ticket_id>", methods=["GET", "POST"])
+@login_required
+def chat(ticket_id):
+    conn = get_db()
+    # Fetch ticket along with requester name
+    ticket = conn.execute("""
+        SELECT t.*, u.username as requester_name 
+        FROM tickets t 
+        JOIN users u ON t.user_id = u.id 
+        WHERE t.id = ?
+    """, (ticket_id,)).fetchone()
+    
+    if not ticket:
+        conn.close()
+        return "Ticket not found", 404
+    
+    # Permissions: Admin can see all, Users can only see their own tickets
+    if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
+        conn.close()
+        return "Unauthorized", 403
+        
+    if request.method == "POST":
+        message_text = request.form.get("message")
+        if message_text:
+            conn.execute("INSERT INTO ticket_messages (ticket_id, user_id, message) VALUES (?, ?, ?)",
+                         (ticket_id, session['user_id'], message_text))
+            conn.commit()
+            
+            # Smart Notifications
+            if session.get('role') == 'admin':
+                # Notify the ticket owner
+                create_notification(ticket['user_id'], f"Admin responded to your discussion on Ticket #{ticket_id}.", "Chat")
+            else:
+                # Notify all admins with the user's name for clarity
+                user_name = session.get('username', 'User')
+                admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
+                for admin in admins:
+                    create_notification(admin['id'], f"User {user_name} responded to Ticket #{ticket_id} discussion.", "Chat")
+                    
+    messages = conn.execute("""
+        SELECT m.*, u.username, u.role as user_role
+        FROM ticket_messages m 
+        JOIN users u ON m.user_id = u.id 
+        WHERE m.ticket_id = ? 
+        ORDER BY m.timestamp ASC
+    """, (ticket_id,)).fetchall()
+    
+    conn.close()
+    return render_template("chat.html", ticket=ticket, messages=messages)
 
 
 

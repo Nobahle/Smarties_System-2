@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Discussion — Smarties System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <style>
+        .chat-container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: var(--bg-card);
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            overflow: hidden;
+            border: 1px solid var(--border-dim);
+        }
+
+        .chat-header {
+            padding: 20px 24px;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .chat-header .ticket-id {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: var(--bg-app);
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+        }
+
+        .message.sent {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.received {
+            align-self: flex-start;
+            background: var(--bg-card);
+            color: var(--text-main);
+            border: 1px solid var(--border-dim);
+            border-bottom-left-radius: 2px;
+        }
+
+        .message-meta {
+            font-size: 10px;
+            margin-bottom: 4px;
+            opacity: 0.8;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .message.sent .message-meta {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .message.received .message-meta {
+            color: var(--text-muted);
+        }
+
+        .chat-input-area {
+            padding: 20px 24px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-dim);
+        }
+
+        .chat-form {
+            display: flex;
+            gap: 12px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border-dim);
+            border-radius: 8px;
+            background: var(--bg-app);
+            color: var(--text-main);
+            font-family: inherit;
+            resize: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .send-btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--primary);
+        }
+
+        .ticket-context {
+            padding: 12px 24px;
+            background: var(--bg-app);
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .empty-chat {
+            text-align: center;
+            color: var(--text-muted);
+            margin-top: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-content" style="padding: 40px 20px;">
+        <div style="max-width: 900px; margin: 0 auto;">
+            <a href="{{ url_for('dashboard') if session['role'] == 'admin' else url_for('view') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <div>
+                    <h2>Case Discussion</h2>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                        <span class="ticket-id">Ticket #{{ ticket.id }}</span>
+                        <span style="font-size: 13px; opacity: 0.9; font-weight: 500;">&bull; Requester: <strong>{{ ticket.requester_name }}</strong></span>
+                    </div>
+                </div>
+                <div class="status-badge" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                    Status: {{ ticket.status }}
+                </div>
+            </div>
+
+            <div class="ticket-context">
+                <i class="fas fa-quote-left" style="margin-right: 8px; opacity: 0.5;"></i>
+                <strong>Original Request:</strong> {{ ticket.ticket_text[:200] }}{% if ticket.ticket_text|length > 200 %}...{% endif %}
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                {% if not messages %}
+                    <div class="empty-chat">
+                        <i class="fas fa-comments" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                        <p>No messages yet. Start the conversation below.</p>
+                    </div>
+                {% else %}
+                    {% for msg in messages %}
+                        <div class="message {{ 'sent' if msg.user_id == session['user_id'] else 'received' }}">
+                            <div class="message-meta">
+                                <strong>{{ 'You' if msg.user_id == session['user_id'] else msg.username }} ({{ msg.user_role }})</strong>
+                                <span>{{ msg.timestamp }}</span>
+                            </div>
+                            <div class="message-content">
+                                {{ msg.message }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="chat-input-area">
+                <form class="chat-form" method="POST">
+                    <textarea name="message" class="chat-input" placeholder="Type your message here..." rows="1" required></textarea>
+                    <button type="submit" class="send-btn">
+                        <i class="fas fa-paper-plane"></i> Send
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script>
+        // Auto-scroll to bottom of chat
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Auto-resize textarea
+        const textarea = document.querySelector('.chat-input');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    </script>
+</body>
+</html>
