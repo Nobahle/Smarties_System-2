@@ -26,7 +26,7 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
-env_path = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+env_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '.env')
 if os.path.exists(env_path):
     load_dotenv(env_path)
     print(f"[SYSTEM DEBUG] Loaded SMTP_EMAIL: {os.getenv('SMTP_EMAIL')}")
@@ -258,6 +258,32 @@ def create_notification(user_id, message, type="Update"):
         subject = f"Smarties Notification: {type} for {user['username']}"
         send_trigger_email(user['email'], subject, message)
 
+# ---------------- EMAIL HELPER ----------------
+def send_email(to_email, subject, body):
+    sender_email = os.getenv("SMTP_EMAIL")
+    sender_password = os.getenv("SMTP_PASSWORD")
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+
+    if not sender_email or not sender_password:
+        print(f"\n[MOCK EMAIL SENT]\nTo: {to_email}\nSubject: {subject}\nBody: {body}\n")
+        return False
+
+    try:
+        msg = MIMEText(body, 'html')
+        msg['Subject'] = subject
+        msg['From'] = f"Smarties System <{sender_email}>"
+        msg['To'] = to_email
+
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {e}")
+        return False
+
 # ---------------- AUTOMATION ENGINE ----------------
 def run_automation_engine(ticket_id):
     """
@@ -265,7 +291,13 @@ def run_automation_engine(ticket_id):
     Automate ticket routing and priority based on keywords and AI analysis.
     """
     conn = get_db()
-    ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    # Fetch ticket with user email and the AI response
+    ticket = conn.execute("""
+        SELECT t.*, u.email, u.username 
+        FROM tickets t 
+        JOIN users u ON t.user_id = u.id 
+        WHERE t.id=?
+    """, (ticket_id,)).fetchone()
     if not ticket:
         conn.close()
         return
@@ -319,8 +351,31 @@ def run_automation_engine(ticket_id):
     if assigned_to:
         create_notification(assigned_to, f"New ticket #{ticket_id} automatically assigned to you: {ticket['ticket_text'][:50]}...", "Assignment")
     
-    # Notify requester
-    create_notification(ticket['user_id'], f"Your ticket #{ticket_id} has been processed and routed to {auto_assigned_dept or ticket['category']}.", "Update")
+    # Notify requester via Dashboard
+    requester_msg = f"Your ticket #{ticket_id} has been processed and routed to {auto_assigned_dept or ticket['category']}."
+    create_notification(ticket['user_id'], requester_msg, "Update")
+    
+    # Notify requester via Email
+    email_subject = f"Smarties System: Ticket #{ticket_id} Received"
+    email_body = f"""
+    <html>
+    <body style="font-family: sans-serif; color: #1e293b; line-height: 1.6;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h2 style="color: #2563eb;">Ticket Confirmation</h2>
+            <p>Hi <strong>{ticket['username']}</strong>,</p>
+            <p>Your ticket has been received and assigned to the <strong>{auto_assigned_dept or ticket['category']}</strong> department.</p>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb; margin: 20px 0;">
+                <p style="margin: 0; font-size: 14px; color: #64748b;"><strong>Automated AI Response:</strong></p>
+                <p style="margin: 10px 0 0 0;">{ticket['response']}</p>
+            </div>
+            <p style="font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                This is an automated notification. You can track the status of your ticket at any time by logging into your dashboard.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    send_email(ticket['email'], email_subject, email_body)
 
     conn.close()
 
@@ -661,14 +716,21 @@ def dashboard():
 def submit():
     ticket_text = request.form["ticket"]
     
-    # Handle File Upload
+    # Handle File Upload (Organized by User)
     attachment_filename = None
     if 'attachment' in request.files:
         file = request.files['attachment']
         if file and file.filename != '' and allowed_file(file.filename):
-            filename = secure_filename(f"{session['user_id']}_{int(datetime.now().timestamp())}_{file.filename}")
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            attachment_filename = filename
+            user_id = session['user_id']
+            # Create user-specific folder for better organization
+            user_folder = os.path.join(app.config['UPLOAD_FOLDER'], f"user_{user_id}")
+            if not os.path.exists(user_folder):
+                os.makedirs(user_folder)
+            
+            filename = secure_filename(f"ticket_{int(datetime.now().timestamp())}_{file.filename}")
+            file.save(os.path.join(user_folder, filename))
+            # Store relative path for database access
+            attachment_filename = f"user_{user_id}/{filename}"
 
     categories, tone, risk, bias = analyze_ticket_with_ai(ticket_text)
     response = generate_response(categories, tone)
@@ -905,7 +967,7 @@ def view():
 
 
 
-@app.route("/uploads/<filename>")
+@app.route("/uploads/<path:filename>")
 @login_required
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)

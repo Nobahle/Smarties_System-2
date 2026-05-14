@@ -3,7 +3,7 @@
 <head>
     <title>Smarties System - Login</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <style>
         :root {
             /* Inherit from theme.css */
@@ -217,7 +217,7 @@
     <!-- Theme switcher handled by theme.js -->
     <div class="login-container">
         <div class="logo">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Smarties System Logo" class="logo-img">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Smarties System Logo" class="logo-img">
             <h1>Smarties System</h1>
             <p>Intelligent Support & Issue Tracking</p>
         </div>
@@ -251,7 +251,7 @@
         </div>
     </div>
     
-    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script>
         // Clear autofilled fields only on initial page load
         function clearFields() {
