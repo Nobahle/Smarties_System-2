@@ -131,7 +131,7 @@ body {
 
 /* Auth Pages Background Pattern */
 .auth-page {
-    background-image: url('auth-pattern.png');
+    background-image: url('../img/auth-pattern.png');
     background-repeat: repeat;
     background-size: 400px;
     background-attachment: fixed;
@@ -140,7 +140,7 @@ body {
 
 /* For dark mode, we dim the pattern */
 [data-theme="dark"] .auth-page {
-    background-image: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), url('auth-pattern.png');
+    background-image: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), url('../img/auth-pattern.png');
     background-blend-mode: overlay;
 }
 

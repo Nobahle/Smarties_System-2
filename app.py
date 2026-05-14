@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, send_file
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, send_file, send_from_directory
 import ast
 import sqlite3
 import string
@@ -213,80 +213,79 @@ def init_db():
 init_db()
 
 # ---------------- AUDIT ----------------
-def log_action(action, table_name, record_id, old_value, new_value, performer=None):
-    conn = get_db()
-    cursor = conn.cursor()
-    performed_by = performer if performer else session.get('username', 'Unknown')
-    cursor.execute("""
-    INSERT INTO audit_log (action, table_name, record_id, old_value, new_value, performed_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (action, table_name, record_id, str(old_value), str(new_value), performed_by))
-    conn.commit()
-    conn.close()
+def log_action(action, table_name, row_id, old_value, new_value, performer=None):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        performed_by = performer if performer else session.get('username', 'Unknown')
+        cursor.execute("""
+        INSERT INTO audit_log (action, table_name, row_id, old_value, new_value, performer)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (action, table_name, row_id, str(old_value), str(new_value), performed_by))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        with open("error_log.txt", "a") as f:
+            f.write(f"LOG ERROR: {str(e)}\n")
 
 # ---------------- NOTIFICATIONS ----------------
-def send_trigger_email(to_email, subject, message):
-    """
-    Sends a real email using SMTP if credentials exist in .env.
-    Falls back to a console print if no credentials are found.
-    """
-    sender_email = os.getenv("SMTP_EMAIL")
-    sender_password = os.getenv("SMTP_PASSWORD")
-    
-    # Check if we have real credentials or just placeholders
-    if sender_email and sender_password and "your-gmail" not in sender_email and "your-app-password" not in sender_password:
-        try:
-            msg = MIMEText(message)
-            msg['Subject'] = subject
-            msg['From'] = sender_email
-            msg['To'] = to_email
-
-            # Use Gmail SMTP
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(sender_email, sender_password)
-            server.send_message(msg)
-            server.quit()
-            print(f"[SUCCESS] Email sent to {to_email}")
-            return
-        except Exception as e:
-            print(f"[CRITICAL ERROR] SMTP Failed for {to_email}. Details: {e}")
-            print("TIP: Ensure you are using a Gmail 'App Password', not your normal password.")
-    else:
-        print(f"\n[MOCK MODE] No real SMTP credentials found in .env.")
-        print(f"Target: {to_email} | Subject: {subject}")
-        print(f"To enable real emails, update .env with your Gmail and App Password.\n")
-
 def create_notification(user_id, message, type="Update"):
-    if not user_id:
-        return
-    conn = get_db()
-    
-    # Fetch user's email for the external trigger
-    user = conn.execute("SELECT email, username FROM users WHERE id=?", (user_id,)).fetchone()
-    
-    conn.execute("INSERT INTO notifications (user_id, message, type) VALUES (?,?,?)", (user_id, message, type))
-    conn.commit()
-    conn.close()
-    
-    # Week 7: Trigger the external email simulation
-    if user and user['email']:
-        subject = f"Smarties Notification: {type} for {user['username']}"
-        send_trigger_email(user['email'], subject, message)
+    try:
+        if not user_id:
+            return
+        conn = get_db()
+        
+        # Fetch user's email for the external trigger
+        user = conn.execute("SELECT email, username FROM users WHERE id=?", (user_id,)).fetchone()
+        
+        conn.execute("INSERT INTO notifications (user_id, message, type) VALUES (?,?,?)", (user_id, message, type))
+        conn.commit()
+        conn.close()
+        
+        # Week 7: Trigger the external email simulation
+        if user and user['email']:
+            subject = f"Smarties Notification: {type} for {user['username']}"
+            send_trigger_email(user['email'], subject, message)
+    except Exception as e:
+        with open("error_log.txt", "a") as f:
+            f.write(f"NOTIFICATION ERROR: {str(e)}\n")
+
+def notify_admins(message, type="Global"):
+    """
+    Helper to notify all administrators via Dashboard and Email.
+    """
+    try:
+        conn = get_db()
+        admins = conn.execute("SELECT id, email FROM users WHERE role='admin'").fetchall()
+        for admin in admins:
+            create_notification(admin['id'], message, type)
+        conn.close()
+    except Exception as e:
+        with open("error_log.txt", "a") as f:
+            f.write(f"ADMIN NOTIFY ERROR: {str(e)}\n")
 
 # ---------------- EMAIL HELPER ----------------
 def send_email(to_email, subject, body):
+    """
+    Unified email helper that handles both plain text and HTML.
+    Uses .env credentials.
+    """
     sender_email = os.getenv("SMTP_EMAIL")
     sender_password = os.getenv("SMTP_PASSWORD")
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", 587))
 
-    if not sender_email or not sender_password:
-        print(f"\n[MOCK EMAIL SENT]\nTo: {to_email}\nSubject: {subject}\nBody: {body}\n")
+    if not sender_email or not sender_password or "your-gmail" in sender_email or "your-app-password" in sender_password:
+        print(f"\n[MOCK EMAIL] To: {to_email} | Subject: {subject}\n")
         return False
 
     try:
-        msg = MIMEText(body, 'html')
+        # Determine if body is HTML
+        if "<html>" in body.lower():
+            msg = MIMEText(body, 'html')
+        else:
+            msg = MIMEText(body, 'plain')
+            
         msg['Subject'] = subject
         msg['From'] = f"Smarties System <{sender_email}>"
         msg['To'] = to_email
@@ -297,8 +296,14 @@ def send_email(to_email, subject, body):
             server.send_message(msg)
         return True
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {e}")
+        with open("error_log.txt", "a") as f:
+            f.write(f"EMAIL ERROR for {to_email}: {str(e)}\n")
         return False
+
+# Replace send_trigger_email with unified send_email for consistency
+def send_trigger_email(to_email, subject, message):
+    return send_email(to_email, subject, message)
+
 
 # ---------------- AUTOMATION ENGINE ----------------
 def run_automation_engine(ticket_id):
@@ -363,7 +368,12 @@ def run_automation_engine(ticket_id):
     
     conn.commit()
     
-    # 4. Trigger Email Notification (Mocked)
+    # 4. Trigger Notifications
+    if requires_approval:
+        notify_admins(f"Action Required: New ticket #{ticket_id} requires approval.", "Approval")
+    else:
+        notify_admins(f"New ticket #{ticket_id} submitted by {ticket['username']}.", "Global")
+
     if assigned_to:
         create_notification(assigned_to, f"New ticket #{ticket_id} automatically assigned to you: {ticket['ticket_text'][:50]}...", "Assignment")
     
@@ -888,22 +898,29 @@ def delete_ticket(ticket_id):
     session_user_id = str(session.get('user_id', ''))
     ticket_owner_id = str(ticket['user_id'])
     
-    if user_role == 'admin' or session_user_id == ticket_owner_id:
-        log_action("DELETE", "tickets", ticket_id, dict(ticket), None)
-        conn.execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
-        conn.commit()
-        
-        # Week 7: Notify all admins of deletion
-        admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
-        for admin in admins:
-            create_notification(admin['id'], f"Ticket #{ticket_id} was deleted by {session['username']}.", "Global")
-    else:
+    try:
+        if user_role == 'admin' or session_user_id == ticket_owner_id:
+            log_action("DELETE", "tickets", ticket_id, dict(ticket), None)
+            conn.execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
+            conn.commit()
+            
+            # Week 7: Notify all admins of deletion
+            admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
+            for admin in admins:
+                create_notification(admin['id'], f"Ticket #{ticket_id} was deleted by {session.get('username', 'Unknown')}.", "Global")
+        else:
+            conn.close()
+            return f"Unauthorized: User {session_user_id} cannot delete ticket owned by {ticket_owner_id}", 403
+            
         conn.close()
-        return f"Unauthorized: User {session_user_id} cannot delete ticket owned by {ticket_owner_id}", 403
-        
-    conn.close()
-    session['show_delete_modal'] = True
-    return redirect(request.referrer or url_for('dashboard'))
+        session['show_delete_modal'] = True
+        return redirect(request.referrer or url_for('dashboard'))
+    except Exception as e:
+        with open("error_log.txt", "a") as f:
+            f.write(f"DELETE ERROR: {str(e)}\n")
+        if conn:
+            conn.close()
+        return f"Internal Server Error: {str(e)}", 500
 
 @app.route("/update_status/<int:ticket_id>", methods=["POST"])
 @login_required
@@ -1004,6 +1021,11 @@ def chat(ticket_id):
         conn.close()
         return "Unauthorized", 403
         
+    # Approval Lock: Both admin and user must wait for approval before chatting
+    if ticket['requires_approval'] == 1 and ticket['is_approved'] == 0:
+        conn.close()
+        return "Discussion is locked until this ticket is formally approved by an administrator.", 403
+        
     if request.method == "POST":
         message_text = request.form.get("message")
         
@@ -1082,6 +1104,22 @@ def end_chat(ticket_id):
 @app.route("/uploads/<path:filename>")
 @login_required
 def uploaded_file(filename):
+    # Security: Ensure only the owner or an admin can view the file
+    # Files are stored as 'user_{user_id}/filename'
+    if session.get('role') != 'admin':
+        try:
+            # Extract user_id from path 'user_ID/filename'
+            path_parts = filename.split('/')
+            if len(path_parts) > 0 and path_parts[0].startswith('user_'):
+                owner_id = int(path_parts[0].replace('user_', ''))
+                if owner_id != session.get('user_id'):
+                    return "Unauthorized", 403
+            else:
+                # If path doesn't follow the pattern, deny for non-admins for safety
+                return "Unauthorized", 403
+        except Exception:
+            return "Unauthorized", 403
+            
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ---------------- API: SUMMARY ----------------
