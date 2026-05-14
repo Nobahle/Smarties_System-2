@@ -61,7 +61,7 @@ app.secret_key = 'your-secret-key-here'
 UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log', 'mp4', 'mov', 'avi', 'mkv', 'doc', 'docx', 'xls', 'xlsx'}
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -131,6 +131,7 @@ def init_db():
             ticket_id INTEGER,
             user_id INTEGER,
             message TEXT,
+            attachment_path TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(ticket_id) REFERENCES tickets(id),
             FOREIGN KEY(user_id) REFERENCES users(id)
@@ -189,6 +190,9 @@ def init_db():
     except: pass
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN department TEXT")
+    except: pass
+    try:
+        cursor.execute("ALTER TABLE ticket_messages ADD COLUMN attachment_path TEXT")
     except: pass
 
     # Seed some default automation rules if table is empty
@@ -1002,9 +1006,24 @@ def chat(ticket_id):
         
     if request.method == "POST":
         message_text = request.form.get("message")
-        if message_text:
-            conn.execute("INSERT INTO ticket_messages (ticket_id, user_id, message) VALUES (?, ?, ?)",
-                         (ticket_id, session['user_id'], message_text))
+        
+        # Handle Chat Attachment
+        attachment_filename = None
+        if 'attachment' in request.files:
+            file = request.files['attachment']
+            if file and file.filename != '' and allowed_file(file.filename):
+                user_id = session['user_id']
+                user_folder = os.path.join(app.config['UPLOAD_FOLDER'], f"user_{user_id}")
+                if not os.path.exists(user_folder):
+                    os.makedirs(user_folder)
+                
+                filename = secure_filename(f"chat_{int(datetime.now().timestamp())}_{file.filename}")
+                file.save(os.path.join(user_folder, filename))
+                attachment_filename = f"user_{user_id}/{filename}"
+
+        if message_text or attachment_filename:
+            conn.execute("INSERT INTO ticket_messages (ticket_id, user_id, message, attachment_path) VALUES (?, ?, ?, ?)",
+                         (ticket_id, session['user_id'], message_text, attachment_filename))
             conn.commit()
             
             # Smart Notifications
@@ -1028,6 +1047,35 @@ def chat(ticket_id):
     
     conn.close()
     return render_template("chat.html", ticket=ticket, messages=messages)
+
+@app.route("/end_chat/<int:ticket_id>", methods=["POST"])
+@login_required
+def end_chat(ticket_id):
+    conn = get_db()
+    ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return "Ticket not found", 404
+        
+    # Only admin or ticket owner can end chat
+    if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
+        conn.close()
+        return "Unauthorized", 403
+        
+    conn.execute("UPDATE tickets SET status='Resolved' WHERE id=?", (ticket_id,))
+    conn.commit()
+    log_action("UPDATE", "tickets", ticket_id, ticket['status'], 'Resolved', performer=session['username'])
+    
+    # Notify other party
+    if session.get('role') == 'admin':
+        create_notification(ticket['user_id'], f"Admin has marked Ticket #{ticket_id} as resolved and ended the discussion.", "Chat")
+    else:
+        admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
+        for admin in admins:
+            create_notification(admin['id'], f"User {session['username']} marked Ticket #{ticket_id} as resolved.", "Chat")
+            
+    conn.close()
+    return redirect(url_for('dashboard') if session['role'] == 'admin' else url_for('view'))
 
 
 

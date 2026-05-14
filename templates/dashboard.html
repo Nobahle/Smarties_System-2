@@ -509,9 +509,11 @@
                             </form>
                             {% endif %}
 
+                            {% if ticket['status'] != 'Resolved' %}
                             <a href="{{ url_for('chat', ticket_id=ticket['id']) }}" class="update-btn" style="background: var(--primary) !important; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);" title="Discuss this case">
                                 <i class="fa-solid fa-comments"></i> Discussion
                             </a>
+                            {% endif %}
 
                             <button type="button" class="delete-btn" style="padding: 8px 12px; border-radius: 8px; background: var(--error); color: white; border: none; cursor: pointer;" onclick="openDeleteConfirm('{{ ticket['id'] }}', '{{ url_for('delete_ticket', ticket_id=ticket['id']) }}')" title="Delete Ticket">
                                 <i class="fa-solid fa-trash-can"></i>

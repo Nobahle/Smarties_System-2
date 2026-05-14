@@ -169,6 +169,85 @@
             color: var(--text-muted);
             margin-top: 100px;
         }
+        .end-chat-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .end-chat-btn:hover {
+            background: var(--error);
+            border-color: var(--error);
+            transform: translateY(-1px);
+        }
+
+        .attachment-preview {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .attachment-preview img, .attachment-preview video {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 4px;
+            display: block;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 40px;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-btn {
+            background: var(--bg-surface);
+            color: var(--text-muted);
+            border: 1.5px solid var(--border-dim);
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-btn:hover {
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .file-btn.has-file {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .status-resolved {
+            background: #10b981 !important;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -188,8 +267,17 @@
                         <span style="font-size: 13px; opacity: 0.9; font-weight: 500;">&bull; Requester: <strong>{{ ticket.requester_name }}</strong></span>
                     </div>
                 </div>
-                <div class="status-badge" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
-                    Status: {{ ticket.status }}
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="status-badge {{ 'status-resolved' if ticket.status == 'Resolved' else '' }}" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                        Status: {{ ticket.status }}
+                    </div>
+                    {% if ticket.status != 'Resolved' %}
+                    <form action="{{ url_for('end_chat', ticket_id=ticket.id) }}" method="POST" style="margin: 0;">
+                        <button type="submit" class="end-chat-btn" onclick="return confirm('Are you sure you want to resolve this ticket and end the discussion?')">
+                            <i class="fas fa-check-circle"></i> End Chat
+                        </button>
+                    </form>
+                    {% endif %}
                 </div>
             </div>
 
@@ -213,6 +301,25 @@
                             </div>
                             <div class="message-content">
                                 {{ msg.message }}
+                                {% if msg.attachment_path %}
+                                <div class="attachment-preview">
+                                    {% set ext = msg.attachment_path.split('.')[-1].lower() %}
+                                    {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                                        <a href="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" target="_blank">
+                                            <img src="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" alt="Attachment">
+                                        </a>
+                                    {% elif ext in ['mp4', 'mov', 'avi', 'mkv'] %}
+                                        <video controls>
+                                            <source src="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" type="video/{{ 'quicktime' if ext == 'mov' else 'mp4' }}">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    {% else %}
+                                        <a href="{{ url_for('uploaded_file', filename=msg.attachment_path) }}" target="_blank" style="display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: underline;">
+                                            <i class="fas fa-file-alt"></i> Download Attachment ({{ ext.upper() }})
+                                        </a>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     {% endfor %}
@@ -220,12 +327,24 @@
             </div>
 
             <div class="chat-input-area">
-                <form class="chat-form" method="POST">
-                    <textarea name="message" class="chat-input" placeholder="Type your message here..." rows="1" required></textarea>
+                {% if ticket.status != 'Resolved' %}
+                <form class="chat-form" method="POST" enctype="multipart/form-data">
+                    <div class="file-input-wrapper">
+                        <label class="file-btn" id="fileBtn" title="Attach file">
+                            <i class="fas fa-paperclip"></i>
+                        </label>
+                        <input type="file" name="attachment" id="attachment" onchange="updateFileIcon()">
+                    </div>
+                    <textarea name="message" class="chat-input" placeholder="Type your message here..." rows="1"></textarea>
                     <button type="submit" class="send-btn">
                         <i class="fas fa-paper-plane"></i> Send
                     </button>
                 </form>
+                {% else %}
+                <div style="text-align: center; color: var(--text-muted); padding: 10px; font-weight: 600;">
+                    <i class="fas fa-lock" style="margin-right: 8px;"></i> This conversation has ended as the ticket is resolved.
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -238,10 +357,26 @@
 
         // Auto-resize textarea
         const textarea = document.querySelector('.chat-input');
-        textarea.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-        });
+        if (textarea) {
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+        }
+
+        function updateFileIcon() {
+            const input = document.getElementById('attachment');
+            const btn = document.getElementById('fileBtn');
+            if (input.files && input.files.length > 0) {
+                btn.classList.add('has-file');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                btn.title = "File selected: " + input.files[0].name;
+            } else {
+                btn.classList.remove('has-file');
+                btn.innerHTML = '<i class="fas fa-paperclip"></i>';
+                btn.title = "Attach file";
+            }
+        }
     </script>
 </body>
 </html>
