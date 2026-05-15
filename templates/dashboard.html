@@ -409,12 +409,17 @@
         {% if session.role == 'user' %}
         <div class="form-section">
             <h2>Submit a New Ticket</h2>
-            <form action="{{ url_for('submit') }}" method="POST">
+            <form action="{{ url_for('submit') }}" method="POST" enctype="multipart/form-data">
                 <div class="form-group">
                     <label for="ticket">Describe your issue:</label>
                     <textarea name="ticket" id="ticket" placeholder="Describe your problem..." required></textarea>
                 </div>
-                <button type="submit">Submit Ticket</button>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="attachment" style="font-weight: 600; color: var(--text-main); margin-bottom: 8px; display: block;">Attach a file or photo (Optional):</label>
+                    <input type="file" name="attachment" id="attachment" accept="image/*,.pdf,.doc,.docx,.txt" style="width: 100%; padding: 12px; border: 1px dashed var(--border-dim); border-radius: 8px; background: var(--bg-surface); color: var(--text-main); font-size: 14px; cursor: pointer; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-dim)'">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 6px; display: block;">Max size: 5MB. Tap to select from your device or camera.</small>
+                </div>
+                <button type="submit" style="margin-top: 20px;">Submit Ticket</button>
                 <a href="{{ url_for('view') }}" style="margin-left:15px; text-decoration:none; font-weight:bold; color:var(--primary);">View Tickets</a>
             </form>
         </div>

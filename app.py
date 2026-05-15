@@ -53,18 +53,24 @@ try:
         try:
             cred_dict = json.loads(firebase_creds_json)
             cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
+            firebase_admin.initialize_app(cred, {
+                'storageBucket': f"{cred_dict.get('project_id', 'smarties-ticket-system')}.appspot.com"
+            })
             print("[SYSTEM DEBUG] Initialized using FIREBASE_CREDENTIALS_JSON")
         except json.JSONDecodeError as je:
             print(f"[SYSTEM DEBUG] JSON Decode Error: {je}. First 50 chars: {repr(firebase_creds_json[:50])}")
             raise
     elif os.path.exists(cred_path):
         cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
+        firebase_admin.initialize_app(cred, {
+            'storageBucket': 'smarties-ticket-system.appspot.com'
+        })
         print("[SYSTEM DEBUG] Initialized using serviceAccountKey.json")
     else:
         # Fallback to default credentials if running in GCP
-        firebase_admin.initialize_app()
+        firebase_admin.initialize_app(None, {
+            'storageBucket': 'smarties-ticket-system.appspot.com'
+        })
         print("[SYSTEM DEBUG] Initialized using default GCP credentials")
     
     db = firestore.client(database_id='default')
@@ -812,15 +818,24 @@ def submit():
         file = request.files['attachment']
         if file and file.filename != '' and allowed_file(file.filename):
             user_id = session['user_id']
-            # Create user-specific folder for better organization
-            user_folder = os.path.join(app.config['UPLOAD_FOLDER'], f"user_{user_id}")
-            if not os.path.exists(user_folder):
-                os.makedirs(user_folder)
-            
             filename = secure_filename(f"ticket_{int(datetime.now().timestamp())}_{file.filename}")
-            file.save(os.path.join(user_folder, filename))
-            # Store relative path for database access
-            attachment_filename = f"user_{user_id}/{filename}"
+            
+            try:
+                from firebase_admin import storage
+                bucket = storage.bucket()
+                blob = bucket.blob(f"attachments/user_{user_id}/{filename}")
+                blob.upload_from_file(file.stream, content_type=file.content_type)
+                blob.make_public()
+                attachment_filename = blob.public_url
+                print(f"[UPLOAD SUCCESS] Uploaded to Firebase: {attachment_filename}")
+            except Exception as e:
+                print(f"[UPLOAD FALLBACK] Firebase Storage failed: {e}. Using /tmp.")
+                # Fallback to /tmp folder for Vercel
+                user_folder = f"/tmp/uploads/user_{user_id}"
+                os.makedirs(user_folder, exist_ok=True)
+                file.stream.seek(0)
+                file.save(os.path.join(user_folder, filename))
+                attachment_filename = f"user_{user_id}/{filename}"
 
     categories, tone, risk, bias = analyze_ticket_with_ai(ticket_text)
     response = generate_response(categories, tone)
@@ -1240,6 +1255,10 @@ def end_chat(ticket_id):
 @app.route("/uploads/<path:filename>")
 @login_required
 def uploaded_file(filename):
+    # Handle absolute URLs (e.g. from Firebase Storage) gracefully
+    if filename.startswith('http://') or filename.startswith('https://'):
+        return redirect(filename)
+        
     # Security: Ensure only the owner or an admin can view the file
     # Files are stored as 'user_{user_id}/filename'
     if session.get('role') != 'admin':
@@ -1256,6 +1275,11 @@ def uploaded_file(filename):
         except Exception:
             return "Unauthorized", 403
             
+    # Try ephemeral /tmp fallback first
+    tmp_path = os.path.join('/tmp/uploads', filename)
+    if os.path.exists(tmp_path):
+        return send_from_directory('/tmp/uploads', filename)
+        
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ---------------- API: SUMMARY ----------------
