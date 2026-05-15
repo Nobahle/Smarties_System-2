@@ -57,10 +57,7 @@ try:
         firebase_admin.initialize_app()
         print("[SYSTEM DEBUG] Initialized using default GCP credentials")
     
-    try:
-        db = firestore.client(database_id='default')
-    except TypeError:
-        db = firestore.client()
+    db = firestore.client()
     print("[SYSTEM DEBUG] Firestore Initialized Successfully")
 except Exception as e:
     print(f"[SYSTEM DEBUG] Firestore Initialization Error: {e}")
