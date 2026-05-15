@@ -6,13 +6,23 @@ import io
 import csv
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import requests
 import json
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+
+SAST = timezone(timedelta(hours=2))
+
+def format_timestamp(ts):
+    if not ts:
+        return ""
+    if hasattr(ts, 'astimezone'):
+        return ts.astimezone(SAST).strftime('%Y-%m-%d %H:%M')
+    return str(ts)[:16]
+
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -544,7 +554,7 @@ def get_report_data(department=None, period_days=7):
 
     for doc in tickets_stream:
         data = doc.to_dict()
-        data['created_at'] = str(data.get('created_at', ''))
+        data['created_at'] = format_timestamp(data.get('created_at'))
         status = data.get('status')
         if status == 'Resolved': resolved += 1
         elif status == 'In Progress': in_progress += 1
@@ -574,7 +584,7 @@ def get_report_data(department=None, period_days=7):
             surge_dept = dept
 
     # Recent tickets
-    recent_docs = sorted(tickets_stream, key=lambda x: x.to_dict().get('created_at', datetime.min), reverse=True)[:10]
+    recent_docs = sorted(tickets_stream, key=lambda x: x.to_dict().get('created_at', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)[:10]
     recent = []
     
     users_cache = {}
@@ -592,7 +602,7 @@ def get_report_data(department=None, period_days=7):
     for doc in recent_docs:
         t_data = doc.to_dict()
         t_data['id'] = doc.id
-        t_data['created_at'] = str(t_data.get('created_at', ''))
+        t_data['created_at'] = format_timestamp(t_data.get('created_at'))
         t_data['agent_name'] = get_username(t_data.get('assigned_to'))
         recent.append(t_data)
 
@@ -617,7 +627,7 @@ def get_report_data(department=None, period_days=7):
         "dept_breakdown": dept_counts, "tone_data": tone_counts,
         "recent_tickets": recent,
         "period_days": period_days, "department": department or "All",
-        "generated_at": datetime.now().strftime("%d %B %Y, %H:%M"),
+        "generated_at": datetime.now(SAST).strftime("%d %B %Y, %H:%M"),
         "period_label": f"Last {period_days} days",
         "forecast_total": forecast_total,
         "trend_perc": abs(trend_perc),
@@ -772,7 +782,7 @@ def dashboard():
     for doc in tickets_stream:
         t_data = doc.to_dict()
         t_data['id'] = doc.id
-        t_data['created_at'] = str(t_data.get('created_at', ''))
+        t_data['created_at'] = format_timestamp(t_data.get('created_at'))
         
         # Filter by search in memory
         if search:
@@ -1078,7 +1088,7 @@ def view():
     for doc in tickets_stream:
         t_data = doc.to_dict()
         t_data['id'] = doc.id
-        t_data['created_at'] = str(t_data.get('created_at', ''))
+        t_data['created_at'] = format_timestamp(t_data.get('created_at'))
         
         if search:
             search_lower = search.lower()
@@ -1178,7 +1188,7 @@ def chat(ticket_id):
 
     for doc in msg_stream:
         m_data = doc.to_dict()
-        m_data['timestamp'] = str(m_data.get('timestamp', ''))
+        m_data['timestamp'] = format_timestamp(m_data.get('timestamp'))
         user_info = get_user_info(m_data.get('user_id'))
         m_data['username'] = user_info.get('username', 'Unknown')
         m_data['user_role'] = user_info.get('role', 'user')
@@ -1354,7 +1364,7 @@ def download_csv():
         t = doc.to_dict()
         t['id'] = doc.id
         preview = t.get('ticket_text', '')[:80].replace('\n', ' ') + '...' if len(t.get('ticket_text', '')) > 80 else t.get('ticket_text', '')
-        writer.writerow([t['id'], t.get('status'), t.get('category'), t.get('tone'), t.get('priority_level'), t.get('created_at'), preview])
+        writer.writerow([t['id'], t.get('status'), t.get('category'), t.get('tone'), t.get('priority_level'), format_timestamp(t.get('created_at')), preview])
     
     writer.writerow([])
     writer.writerow(['*** CONFIDENTIAL: SMARTIES SYSTEM INTERNAL REPORT ***'])
@@ -1582,7 +1592,7 @@ def download_pdf():
             
             # 2. Card Content Table
             priority = t.get('priority_level') or 'Normal'
-            meta_text = f"<b>Category:</b> {t['category']}  |  <b>Priority:</b> {priority}  |  <b>Created:</b> {str(t['created_at'])[:16]}"
+            meta_text = f"<b>Category:</b> {t['category']}  |  <b>Priority:</b> {priority}  |  <b>Created:</b> {format_timestamp(t.get('created_at'))}"
             
             issue_text = f"<font color='white'><b>Issue:</b><br/>{t['ticket_text']}</font>"
             
@@ -1765,7 +1775,7 @@ def compliance():
         for doc in tickets_stream:
             t_data = doc.to_dict()
             t_data['id'] = doc.id
-            t_data['created_at'] = str(t_data.get('created_at', ''))
+            t_data['created_at'] = format_timestamp(t_data.get('created_at'))
             t_data['sender_name'] = get_username(str(t_data.get('user_id')))
             tickets.append(t_data)
     except Exception as e:
@@ -1801,7 +1811,7 @@ def download_compliance():
         for doc in tickets_stream:
             t_data = doc.to_dict()
             t_data['id'] = doc.id
-            t_data['created_at'] = str(t_data.get('created_at', ''))
+            t_data['created_at'] = format_timestamp(t_data.get('created_at'))
             t_data['sender_name'] = get_username(str(t_data.get('user_id')))
             tickets.append(t_data)
     except:
@@ -1815,7 +1825,7 @@ def download_compliance():
                 tx = str(t['ticket_text']).replace('"', '""').replace('\n', ' ')
                 risk = str(t.get('risk_level', 'Low - Standard')).replace('"', '""').replace('\n', ' ')
                 bias = str(t.get('bias_flag', 'No')).replace('"', '""').replace('\n', ' ')
-                row = f'{t["id"]},"{t["sender_name"]}","{tx}","{t["category"]}","{t["tone"]}","{risk}","{bias}","{t["created_at"]}"'
+                row = f'{t["id"]},"{t["sender_name"]}","{tx}","{t["category"]}","{t["tone"]}","{risk}","{bias}","{format_timestamp(t.get("created_at"))}"'
                 data.append(row)
             yield '\n'.join(data) + '\n'
         return Response(generate(), mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=Governance_Evaluation.csv'})
@@ -1857,7 +1867,7 @@ def download_compliance():
             Paragraph(str(t['tone']), table_cell_style),
             Paragraph(risk, table_cell_style),
             Paragraph(bias, table_cell_style),
-            Paragraph(str(t['created_at'])[:10], table_cell_style)
+            Paragraph(format_timestamp(t.get('created_at'))[:10], table_cell_style)
         ])
         
     # Optimized widths for landscape letter (approx 750pts wide)
