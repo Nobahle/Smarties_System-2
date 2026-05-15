@@ -272,10 +272,6 @@
 
                             {% if t['status'] != 'Resolved' and (t['requires_approval'] == 0 or t['is_approved'] == 1) %}
                             <a href="{{ url_for('chat', ticket_id=t['id']) }}" class="update-btn" style="text-decoration: none; margin-right: 8px;">Discussion</a>
-                            {% elif t['requires_approval'] == 1 and t['is_approved'] == 0 %}
-                            <span class="update-btn" style="background: var(--bg-surface) !important; color: var(--text-muted); padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: not-allowed; border: 1px solid var(--border-dim); opacity: 0.7;" title="Awaiting Admin Approval">
-                                <i class="fa-solid fa-lock"></i> Chat Locked
-                            </span>
                             {% endif %}
                             <button type="button" class="delete-btn" onclick="openDeleteConfirm('{{ t['id'] }}', '{{ url_for('delete_ticket', ticket_id=t['id']) }}')">Delete</button>
                         </div>
