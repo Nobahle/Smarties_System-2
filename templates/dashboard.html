@@ -503,17 +503,20 @@
                                 </button>
                             </form>
 
-                            {% if ticket['requires_approval'] == 1 and ticket['is_approved'] == 0 %}
+                            {% set req_app = ticket.get('requires_approval', 0) %}
+                            {% set is_app = ticket.get('is_approved', 0) %}
+                            
+                            {% if req_app == 1 and is_app == 0 %}
                             <form action="{{ url_for('approve_ticket', ticket_id=ticket['id']) }}" method="POST">
                                 <button type="submit" style="padding: 8px 16px; font-size: 11px; background: #10b981; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">APPROVE</button>
                             </form>
                             {% endif %}
 
-                            {% if ticket['status'] != 'Resolved' and (ticket['requires_approval'] == 0 or ticket['is_approved'] == 1) %}
+                            {% if ticket['status'] != 'Resolved' and (req_app == 0 or is_app == 1) %}
                             <a href="{{ url_for('chat', ticket_id=ticket['id']) }}" class="update-btn" style="background: var(--primary) !important; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);" title="Discuss this case">
                                 <i class="fa-solid fa-comments"></i> Discussion
                             </a>
-                            {% elif ticket['requires_approval'] == 1 and ticket['is_approved'] == 0 %}
+                            {% elif req_app == 1 and is_app == 0 %}
                             <span class="update-btn" style="background: var(--bg-surface) !important; color: var(--text-muted); padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: not-allowed; border: 1px solid var(--border-dim); box-shadow: none;" title="Approve ticket to unlock discussion">
                                 <i class="fa-solid fa-lock"></i> Chat Locked
                             </span>

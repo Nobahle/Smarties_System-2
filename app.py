@@ -952,7 +952,7 @@ def approve_ticket(ticket_id):
         log_action("APPROVE", "tickets", ticket_id, "Pending Approval", "Approved")
         create_notification(ticket_snap.to_dict().get('user_id'), f"Your ticket #{ticket_id} has been approved and is now in progress.", "Approval")
     
-    return redirect(request.referrer or url_for('dashboard'))
+    return redirect(url_for('chat', ticket_id=ticket_id))
 
 @app.route("/update_assignment/<string:ticket_id>", methods=["POST"])
 @login_required
@@ -1608,8 +1608,8 @@ def download_pdf():
             issue_text = f"<font color='white'><b>Issue:</b><br/>{t['ticket_text']}</font>"
             
             assigned = t.get('agent_name') or 'Auto-Queue'
-            status_detail_color = "#f59e0b" if (t.get('requires_approval') == 1 and t.get('is_approved') == 0) else "#10b981"
-            status_detail = "Awaiting Approval" if (t.get('requires_approval') == 1 and t.get('is_approved') == 0) else "Automated Processing Complete"
+            status_detail_color = "#f59e0b" if (t.get('requires_approval', 0) == 1 and t.get('is_approved', 0) == 0) else "#10b981"
+            status_detail = "Awaiting Approval" if (t.get('requires_approval', 0) == 1 and t.get('is_approved', 0) == 0) else "Automated Processing Complete"
             
             footer_text = f"<b>Assigned To:</b> {assigned}  |  <b>Status Detail:</b> <font color='{status_detail_color}'>{status_detail}</font>"
             

@@ -270,7 +270,10 @@
                             </form>
                             {% endif %}
 
-                            {% if t['status'] != 'Resolved' and (t['requires_approval'] == 0 or t['is_approved'] == 1) %}
+                            {% set req_app = t.get('requires_approval', 0) %}
+                            {% set is_app = t.get('is_approved', 0) %}
+
+                            {% if t['status'] != 'Resolved' and (req_app == 0 or is_app == 1) %}
                             <a href="{{ url_for('chat', ticket_id=t['id']) }}" class="update-btn" style="text-decoration: none; margin-right: 8px;">Discussion</a>
                             {% endif %}
                             <button type="button" class="delete-btn" onclick="openDeleteConfirm('{{ t['id'] }}', '{{ url_for('delete_ticket', ticket_id=t['id']) }}')">Delete</button>
