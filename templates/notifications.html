@@ -127,36 +127,71 @@
                 <div style="background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-lg);">
                     <table style="width: 100%; border-collapse: collapse; text-align: left;">
                         <thead>
-                            <tr style="background: var(--bg-app); border-bottom: 1px solid var(--border-dim);">
-                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Event Details</th>
-                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Action Performed By</th>
-                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Time</th>
-                                <th style="padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Actions</th>
+                            <tr style="background: var(--bg-app); border-bottom: 2px solid var(--border-dim);">
+                                <th style="padding: 14px 20px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">Event</th>
+                                <th style="padding: 14px 20px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">Details</th>
+                                <th style="padding: 14px 20px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">Submitted By</th>
+                                <th style="padding: 14px 20px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">Time</th>
+                                <th style="padding: 14px 20px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for note in notifications %}
-                                <tr style="border-bottom: 1px solid var(--border-dim); transition: background 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.05)'" onmouseout="this.style.background='transparent'">
-                                    <td style="padding: 16px; color: var(--text-main); font-weight: 500; font-size: 14px;">
-                                        {{ note.message.split(' by ')[0]|replace('GLOBAL ALERT: ', '') }}
+                                {% set is_ticket = '#' in note.message %}
+                                {% set is_chat = note.type == 'Chat' %}
+                                {% set is_approval = note.type == 'Approval' %}
+                                {% set performer = note.message.split(' from ')[1].rstrip('.') if ' from ' in note.message else (note.message.split(' by ')[1].rstrip('.') if ' by ' in note.message else 'System') %}
+                                <tr style="border-bottom: 1px solid var(--border-dim); transition: background 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.04)'" onmouseout="this.style.background='transparent'">
+                                    <!-- Event type badge -->
+                                    <td style="padding: 16px 20px; white-space: nowrap;">
+                                        {% if is_approval %}
+                                            <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                                                <i class="fa-solid fa-circle-exclamation"></i> Approval Needed
+                                            </span>
+                                        {% elif is_chat %}
+                                            <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(139,92,246,0.12); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.25); padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                                                <i class="fa-solid fa-comments"></i> Chat
+                                            </span>
+                                        {% else %}
+                                            <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(16,185,129,0.12); color: #10b981; border: 1px solid rgba(16,185,129,0.25); padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                                                <i class="fa-solid fa-ticket"></i> Ticket Received
+                                            </span>
+                                        {% endif %}
                                     </td>
-                                    <td style="padding: 16px;">
-                                        {% set performer = note.message.split(' by ')[1] if ' by ' in note.message else 'System' %}
-                                        <span style="color: var(--text-main); font-size: 14px; font-weight: 700; background: var(--bg-app); padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-dim);">
-                                            <i class="fa-solid fa-user" style="font-size: 11px; margin-right: 6px; color: var(--primary);"></i> {{ performer.strip('.') }}
+                                    <!-- Message / details -->
+                                    <td style="padding: 16px 20px; color: var(--text-main); font-size: 14px; font-weight: 500; max-width: 320px;">
+                                        {{ note.message.replace('GLOBAL ALERT: ', '') }}
+                                    </td>
+                                    <!-- Performer -->
+                                    <td style="padding: 16px 20px;">
+                                        <span style="display: inline-flex; align-items: center; gap: 8px; background: var(--bg-app); border: 1px solid var(--border-dim); padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text-main);">
+                                            <i class="fa-solid fa-user" style="color: var(--primary); font-size: 11px;"></i>
+                                            {{ performer }}
                                         </span>
                                     </td>
-                                    <td style="padding: 16px; color: var(--text-muted); font-size: 13px;">
-                                        {{ note.created_at }}
+                                    <!-- Timestamp -->
+                                    <td style="padding: 16px 20px; white-space: nowrap;">
+                                        <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 13px;">
+                                            <i class="fa-regular fa-clock" style="color: var(--primary);"></i>
+                                            {{ note.created_at }}
+                                        </span>
                                     </td>
-                                    <td style="padding: 16px;">
-                                        {% if note.type == 'Chat' %}
+                                    <!-- Action button -->
+                                    <td style="padding: 16px 20px;">
+                                        {% if is_chat %}
                                             {% set tid = note.message.split('#')[1].split(' ')[0].split('.')[0] %}
-                                            <a href="{{ url_for('chat', ticket_id=tid) }}" style="display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 700; transition: all 0.2s;">
-                                                <i class="fa-solid fa-comments"></i> View Chat
+                                            <a href="{{ url_for('chat', ticket_id=tid) }}" style="display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: white; padding: 7px 14px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 700; transition: all 0.2s;" onmouseover="this.style.background='var(--primary-hover)'; this.style.transform='translateY(-1px)'" onmouseout="this.style.background='var(--primary)'; this.style.transform='none'">
+                                                <i class="fa-solid fa-arrow-right"></i> View Chat
                                             </a>
+                                        {% elif is_approval %}
+                                            {% if '#' in note.message %}
+                                                {% set tid = note.message.split('#')[1].split(' ')[0] %}
+                                                <a href="{{ url_for('dashboard') }}" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 7px 14px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 700; transition: all 0.2s;" onmouseover="this.style.background='rgba(245,158,11,0.25)'" onmouseout="this.style.background='rgba(245,158,11,0.15)'">
+                                                    <i class="fa-solid fa-check"></i> Review
+                                                </a>
+                                            {% endif %}
                                         {% else %}
-                                            <span style="color: var(--text-muted); font-size: 11px; font-style: italic;">Log Only</span>
+                                            <span style="color: var(--text-muted); font-size: 12px; font-style: italic;">Log Only</span>
                                         {% endif %}
                                     </td>
                                 </tr>

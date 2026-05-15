@@ -356,7 +356,7 @@ def run_automation_engine(ticket_id):
     if requires_approval:
         notify_admins(f"Action Required: New ticket #{ticket_id} requires approval.", "Approval")
     else:
-        notify_admins(f"New ticket #{ticket_id} submitted by {ticket['username']}.", "Global")
+        notify_admins(f"Ticket #{ticket_id} received from {ticket['username']}.", "Global")
 
     if assigned_to:
         create_notification(assigned_to, f"New ticket #{ticket_id} automatically assigned to you: {ticket['ticket_text'][:50]}...", "Assignment")
@@ -897,7 +897,7 @@ def confirm_assignment():
     # Week 7: Notify all admins of global submission
     admins_query = db.collection('users').where('role', '==', 'admin').stream()
     for admin_doc in admins_query:
-        create_notification(admin_doc.id, f"New ticket #{ticket_id} submitted by {session['username']}.", "Global")
+        create_notification(admin_doc.id, f"Ticket #{ticket_id} received from {session['username']}.", "Global")
 
     # Trigger the new premium success modal
     session['show_success_modal'] = True
@@ -919,6 +919,7 @@ def notifications():
     for doc in notif_stream:
         n_data = doc.to_dict()
         n_data['id'] = doc.id
+        n_data['created_at'] = format_timestamp(n_data.get('created_at'))
         # Fetch target_user for admin view
         if session['role'] == 'admin' and n_data.get('user_id'):
             user_doc = db.collection('users').document(n_data['user_id']).get()

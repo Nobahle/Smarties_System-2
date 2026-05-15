@@ -485,7 +485,7 @@
                                     <span style="background: var(--primary); color: white; padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;">#{{ ticket['id'] }}</span>
                                 </div>
                                 <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px;">
-                                    <i class="fa-regular fa-clock"></i> {{ ticket['created_at'][:16] }}
+                                    <i class="fa-regular fa-clock"></i> {{ ticket['created_at'] }}
                                 </div>
                             </div>
                         </div>
@@ -620,7 +620,7 @@
                         }
                     });
 
-                    document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+                    document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString('en-ZA', {timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit'});
 
                     renderChart(data.resolved, data.in_progress, data.open);
                 })
