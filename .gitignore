@@ -10,3 +10,12 @@ tickets.db
 scratch/
 serviceAccountKey.json
 app_sqlite_backup.py
+.vercel
+.env*.local
+env_for_vercel.txt
+firebase_env.txt
+*.env.*
+logs.txt
+vercel_logs.txt
+set_env.py
+test.py

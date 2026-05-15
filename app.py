@@ -39,16 +39,28 @@ try:
     firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
     if firebase_creds_json:
         import json
-        cred_dict = json.loads(firebase_creds_json)
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
+        print(f"[SYSTEM DEBUG] Found FIREBASE_CREDENTIALS_JSON env var. Length: {len(firebase_creds_json)}")
+        try:
+            cred_dict = json.loads(firebase_creds_json)
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+            print("[SYSTEM DEBUG] Initialized using FIREBASE_CREDENTIALS_JSON")
+        except json.JSONDecodeError as je:
+            print(f"[SYSTEM DEBUG] JSON Decode Error: {je}. First 50 chars: {repr(firebase_creds_json[:50])}")
+            raise
     elif os.path.exists(cred_path):
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
+        print("[SYSTEM DEBUG] Initialized using serviceAccountKey.json")
     else:
         # Fallback to default credentials if running in GCP
         firebase_admin.initialize_app()
-    db = firestore.client(database_id='default')
+        print("[SYSTEM DEBUG] Initialized using default GCP credentials")
+    
+    try:
+        db = firestore.client(database_id='default')
+    except TypeError:
+        db = firestore.client()
     print("[SYSTEM DEBUG] Firestore Initialized Successfully")
 except Exception as e:
     print(f"[SYSTEM DEBUG] Firestore Initialization Error: {e}")
