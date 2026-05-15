@@ -1047,7 +1047,12 @@ def update_status(ticket_id):
 def audit():
     if db is None: return "Firestore not initialized", 500
     logs_stream = db.collection('audit_log').order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
-    logs = [doc.to_dict() for doc in logs_stream]
+    logs = []
+    for doc in logs_stream:
+        log_data = doc.to_dict()
+        log_data['id'] = doc.id
+        log_data['timestamp'] = format_timestamp(log_data.get('timestamp'))
+        logs.append(log_data)
     return render_template("audit.html", logs=logs)
 
 @app.route("/view")
