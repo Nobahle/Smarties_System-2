@@ -20,7 +20,7 @@ def format_timestamp(ts):
     if not ts:
         return ""
     if hasattr(ts, 'astimezone'):
-        return ts.astimezone(SAST).strftime('%Y-%m-%d %H:%M')
+        return ts.astimezone(SAST).strftime('%d %b %Y, %H:%M')
     return str(ts)[:16]
 
 import firebase_admin
