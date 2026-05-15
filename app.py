@@ -784,17 +784,18 @@ def dashboard():
         t_data['id'] = doc.id
         t_data['created_at'] = format_timestamp(t_data.get('created_at'))
         
+        t_data['sender_name'] = get_username(str(t_data.get('user_id')))
+        t_data['agent_name'] = get_username(str(t_data.get('assigned_to')))
+        
         # Filter by search in memory
         if search:
             search_lower = search.lower()
             text_match = search_lower in t_data.get('ticket_text', '').lower()
             id_match = search_lower in t_data['id'].lower()
-            # We'd need to check sender name too, but that requires fetching it first
-            if not (text_match or id_match):
+            sender_match = search_lower in t_data['sender_name'].lower()
+            if not (text_match or id_match or sender_match):
                 continue
         
-        t_data['sender_name'] = get_username(str(t_data.get('user_id')))
-        t_data['agent_name'] = get_username(str(t_data.get('assigned_to')))
         tickets.append(t_data)
     
     return render_template("dashboard.html", tickets=tickets, all_departments=DEPARTMENTS, 
@@ -1095,13 +1096,17 @@ def view():
         t_data['id'] = doc.id
         t_data['created_at'] = format_timestamp(t_data.get('created_at'))
         
-        if search:
-            search_lower = search.lower()
-            if not (search_lower in t_data.get('ticket_text', '').lower() or search_lower in t_data['id'].lower()):
-                continue
-                
         t_data['sender_name'] = get_username(str(t_data.get('user_id')))
         t_data['agent_name'] = get_username(str(t_data.get('assigned_to')))
+        
+        if search:
+            search_lower = search.lower()
+            text_match = search_lower in t_data.get('ticket_text', '').lower()
+            id_match = search_lower in t_data['id'].lower()
+            sender_match = search_lower in t_data['sender_name'].lower()
+            if not (text_match or id_match or sender_match):
+                continue
+                
         tickets.append(t_data)
 
     return render_template("view.html", tickets=tickets, 
