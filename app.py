@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, send_file, send_from_directory
 import ast
-import sqlite3
 import string
 import os
 import io
@@ -14,6 +13,8 @@ import requests
 import json
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 
 # Optional ReportLab if installed
@@ -30,6 +31,28 @@ env_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '.env')
 if os.path.exists(env_path):
     load_dotenv(env_path)
     print(f"[SYSTEM DEBUG] Loaded SMTP_EMAIL: {os.getenv('SMTP_EMAIL')}")
+
+# ---------------- FIREBASE INITIALIZATION ----------------
+try:
+    # Look for service account key in project root
+    cred_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'serviceAccountKey.json')
+    firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
+    if firebase_creds_json:
+        import json
+        cred_dict = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+    elif os.path.exists(cred_path):
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+    else:
+        # Fallback to default credentials if running in GCP
+        firebase_admin.initialize_app()
+    db = firestore.client(database_id='default')
+    print("[SYSTEM DEBUG] Firestore Initialized Successfully")
+except Exception as e:
+    print(f"[SYSTEM DEBUG] Firestore Initialization Error: {e}")
+    db = None
 
 # ReportLab for PDF generation
 from reportlab.lib.pagesizes import A4
@@ -69,161 +92,92 @@ if not os.path.exists(UPLOAD_FOLDER):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "tickets.db")
 
-# ---------------- DB ----------------
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 def init_db():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        email TEXT UNIQUE,
-        password TEXT,
-        role TEXT,
-        department TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS tickets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_text TEXT,
-        category TEXT,
-        tone TEXT,
-        response TEXT,
-        user_id INTEGER,
-        assigned_to INTEGER,
-        status TEXT DEFAULT 'Open',
-        priority_level TEXT DEFAULT 'Normal',
-        requires_approval INTEGER DEFAULT 0,
-        is_approved INTEGER DEFAULT 0,
-        risk_level TEXT DEFAULT 'Low - Standard Request',
-        bias_flag TEXT DEFAULT 'No',
-        transparency_note TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(id),
-        FOREIGN KEY(assigned_to) REFERENCES users(id)
-    )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action TEXT,
-            table_name TEXT,
-            row_id INTEGER,
-            old_value TEXT,
-            new_value TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            performer TEXT
-        )
-    """)
+    """
+    Seed initial data into Firestore if collections are empty.
+    """
+    if db is None:
+        print("[SYSTEM DEBUG] Firestore not initialized. Skipping seed.")
+        return
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticket_id INTEGER,
-            user_id INTEGER,
-            message TEXT,
-            attachment_path TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(ticket_id) REFERENCES tickets(id),
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        message TEXT,
-        type TEXT, -- e.g., 'Assignment', 'StatusUpdate', 'Approval'
-        is_read INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(id)
-    )
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS automation_rules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        keyword TEXT,
-        target_department TEXT,
-        target_priority TEXT,
-        is_active INTEGER DEFAULT 1
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_id INTEGER,
-        user_id INTEGER,
-        comment_text TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(ticket_id) REFERENCES tickets(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-    )
-    """)
-    
-    # Check if we need to add new columns to existing tickets table
-    try:
-        cursor.execute("ALTER TABLE tickets ADD COLUMN assigned_to INTEGER")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE tickets ADD COLUMN priority_level TEXT DEFAULT 'Normal'")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE tickets ADD COLUMN attachment_path TEXT")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE tickets ADD COLUMN requires_approval INTEGER DEFAULT 0")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE tickets ADD COLUMN is_approved INTEGER DEFAULT 0")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN department TEXT")
-    except: pass
-    try:
-        cursor.execute("ALTER TABLE ticket_messages ADD COLUMN attachment_path TEXT")
-    except: pass
-
-    # Seed some default automation rules if table is empty
-    cursor.execute("SELECT COUNT(*) FROM automation_rules")
-    if cursor.fetchone()[0] == 0:
+    # Seed default automation rules
+    print("[SYSTEM DEBUG] Checking automation_rules...")
+    rules_ref = db.collection('automation_rules')
+    if len(list(rules_ref.limit(1).stream())) == 0:
+        print("[SYSTEM DEBUG] Seeding automation_rules...")
         rules = [
-            ('salary', 'Finance', 'High'),
-            ('urgent', 'IT', 'Emergency'),
-            ('leave', 'HR', 'Normal'),
-            ('invoice', 'Finance', 'Normal'),
-            ('water', 'Operations', 'Normal')
+            {'keyword': 'salary', 'target_department': 'Finance', 'target_priority': 'High', 'is_active': 1},
+            {'keyword': 'urgent', 'target_department': 'IT', 'target_priority': 'Emergency', 'is_active': 1},
+            {'keyword': 'leave', 'target_department': 'HR', 'target_priority': 'Normal', 'is_active': 1},
+            {'keyword': 'invoice', 'target_department': 'Finance', 'target_priority': 'Normal', 'is_active': 1},
+            {'keyword': 'water', 'target_department': 'Operations', 'target_priority': 'Normal', 'is_active': 1}
         ]
-        cursor.executemany("INSERT INTO automation_rules (keyword, target_department, target_priority) VALUES (?,?,?)", rules)
+        for rule in rules:
+            rules_ref.add(rule)
+        print("[SYSTEM DEBUG] Seeded automation_rules")
+    else:
+        print("[SYSTEM DEBUG] automation_rules already exist")
 
-    conn.commit()
-    conn.close()
+    # Seed default Administrator
+    print("[SYSTEM DEBUG] Checking Administrator user...")
+    users_ref = db.collection('users')
+    admin_query = users_ref.where('username', '==', 'Administrator').limit(1).stream()
+    if len(list(admin_query)) == 0:
+        print("[SYSTEM DEBUG] Seeding Administrator user...")
+        admin_pw = generate_password_hash("Admin123")
+        users_ref.add({
+            'username': 'Administrator',
+            'email': 'admin@smarties.com',
+            'password': admin_pw,
+            'role': 'admin',
+            'department': 'IT',
+            'created_at': firestore.SERVER_TIMESTAMP
+        })
+        print("[SYSTEM DEBUG] Seeded Administrator user")
+    else:
+        print("[SYSTEM DEBUG] Administrator user already exists")
+
+    # Seed counters
+    counters_ref = db.collection('counters')
+    if not counters_ref.document('tickets').get().exists:
+        counters_ref.document('tickets').set({'last_id': 1000})
+        print("[SYSTEM DEBUG] Seeded ticket counter")
 
 init_db()
+
+def get_next_id(counter_name):
+    """Atomically increment and return the next ID for a collection."""
+    counter_ref = db.collection('counters').document(counter_name)
+    
+    @firestore.transactional
+    def update_counter(transaction, ref):
+        snapshot = ref.get(transaction=transaction)
+        if not snapshot.exists:
+            new_id = 1001
+        else:
+            new_id = snapshot.get('last_id') + 1
+        transaction.update(ref, {'last_id': new_id})
+        return new_id
+
+    transaction = db.transaction()
+    return update_counter(transaction, counter_ref)
 
 # ---------------- AUDIT ----------------
 def log_action(action, table_name, row_id, old_value, new_value, performer=None):
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        if db is None: return
         performed_by = performer if performer else session.get('username', 'Unknown')
-        cursor.execute("""
-        INSERT INTO audit_log (action, table_name, row_id, old_value, new_value, performer)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (action, table_name, row_id, str(old_value), str(new_value), performed_by))
-        conn.commit()
-        conn.close()
+        db.collection('audit_log').add({
+            'action': action,
+            'table_name': table_name,
+            'row_id': str(row_id),
+            'old_value': str(old_value),
+            'new_value': str(new_value),
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'performer': performed_by
+        })
     except Exception as e:
         with open("error_log.txt", "a") as f:
             f.write(f"LOG ERROR: {str(e)}\n")
@@ -231,21 +185,27 @@ def log_action(action, table_name, row_id, old_value, new_value, performer=None)
 # ---------------- NOTIFICATIONS ----------------
 def create_notification(user_id, message, type="Update"):
     try:
-        if not user_id:
+        if not user_id or db is None:
             return
-        conn = get_db()
         
-        # Fetch user's email for the external trigger
-        user = conn.execute("SELECT email, username FROM users WHERE id=?", (user_id,)).fetchone()
+        # Fetch user's email and username
+        user_doc = db.collection('users').document(str(user_id)).get()
+        if not user_doc.exists:
+            return
+        user_data = user_doc.to_dict()
         
-        conn.execute("INSERT INTO notifications (user_id, message, type) VALUES (?,?,?)", (user_id, message, type))
-        conn.commit()
-        conn.close()
+        db.collection('notifications').add({
+            'user_id': user_id,
+            'message': message,
+            'type': type,
+            'is_read': 0,
+            'created_at': firestore.SERVER_TIMESTAMP
+        })
         
         # Week 7: Trigger the external email simulation
-        if user and user['email']:
-            subject = f"Smarties Notification: {type} for {user['username']}"
-            send_trigger_email(user['email'], subject, message)
+        if user_data.get('email'):
+            subject = f"Smarties Notification: {type} for {user_data.get('username')}"
+            send_trigger_email(user_data['email'], subject, message)
     except Exception as e:
         with open("error_log.txt", "a") as f:
             f.write(f"NOTIFICATION ERROR: {str(e)}\n")
@@ -255,11 +215,10 @@ def notify_admins(message, type="Global"):
     Helper to notify all administrators via Dashboard and Email.
     """
     try:
-        conn = get_db()
-        admins = conn.execute("SELECT id, email FROM users WHERE role='admin'").fetchall()
-        for admin in admins:
-            create_notification(admin['id'], message, type)
-        conn.close()
+        if db is None: return
+        admins_stream = db.collection('users').where('role', '==', 'admin').stream()
+        for admin_doc in admins_stream:
+            create_notification(admin_doc.id, message, type)
     except Exception as e:
         with open("error_log.txt", "a") as f:
             f.write(f"ADMIN NOTIFY ERROR: {str(e)}\n")
@@ -311,26 +270,33 @@ def run_automation_engine(ticket_id):
     Week 7 Feature: Transform system into automation engine.
     Automate ticket routing and priority based on keywords and AI analysis.
     """
-    conn = get_db()
-    # Fetch ticket with user email and the AI response
-    ticket = conn.execute("""
-        SELECT t.*, u.email, u.username 
-        FROM tickets t 
-        JOIN users u ON t.user_id = u.id 
-        WHERE t.id=?
-    """, (ticket_id,)).fetchone()
-    if not ticket:
-        conn.close()
+    if db is None: return
+    
+    # Fetch ticket
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    ticket_snap = ticket_ref.get()
+    if not ticket_snap.exists:
         return
+    ticket = ticket_snap.to_dict()
+    ticket['id'] = ticket_snap.id
+
+    # Fetch user data separately since Firestore doesn't JOIN
+    user_doc = db.collection('users').document(ticket['user_id']).get()
+    if not user_doc.exists:
+        return
+    user_data = user_doc.to_dict()
+    ticket['email'] = user_data.get('email')
+    ticket['username'] = user_data.get('username')
 
     text = ticket['ticket_text'].lower()
     
     # 1. Automate Ticket Routing based on rules
-    rules = conn.execute("SELECT * FROM automation_rules WHERE is_active=1").fetchall()
+    rules_stream = db.collection('automation_rules').where('is_active', '==', 1).stream()
     auto_assigned_dept = None
     auto_priority = None
 
-    for rule in rules:
+    for rule_doc in rules_stream:
+        rule = rule_doc.to_dict()
         if rule['keyword'] in text:
             auto_assigned_dept = rule['target_department']
             auto_priority = rule['target_priority']
@@ -340,33 +306,32 @@ def run_automation_engine(ticket_id):
     requires_approval = 0
     
     # Check for sensitive departments
-    is_sensitive_dept = any(dept in (auto_assigned_dept or ticket['category'] or "") for dept in ["Finance", "HR"])
+    is_sensitive_dept = any(dept in (auto_assigned_dept or ticket.get('category') or "") for dept in ["Finance", "HR"])
     
     # Check for AI-detected risks
-    is_high_risk = "High" in (ticket['risk_level'] or "")
-    is_biased = (ticket['bias_flag'] == "Yes")
+    is_high_risk = "High" in (ticket.get('risk_level') or "")
+    is_biased = (ticket.get('bias_flag') == "Yes")
     
-    if is_sensitive_dept or ticket['tone'] == 'Urgent' or is_high_risk or is_biased:
+    if is_sensitive_dept or ticket.get('tone') == 'Urgent' or is_high_risk or is_biased:
         requires_approval = 1
 
     # 3. Find target user to assign (Mock logic: assign to first person in that department)
     assigned_to = None
     if auto_assigned_dept:
-        agent = conn.execute("SELECT id FROM users WHERE department=? LIMIT 1", (auto_assigned_dept,)).fetchone()
-        if agent:
-            assigned_to = agent['id']
+        agent_query = db.collection('users').where('department', '==', auto_assigned_dept).limit(1).stream()
+        agent_docs = list(agent_query)
+        if agent_docs:
+            assigned_to = agent_docs[0].id
 
     # Update ticket with automated values
-    conn.execute("""
-        UPDATE tickets 
-        SET category=COALESCE(?, category), 
-            priority_level=COALESCE(?, priority_level),
-            assigned_to=COALESCE(?, assigned_to),
-            requires_approval=?
-        WHERE id=?
-    """, (auto_assigned_dept, auto_priority, assigned_to, requires_approval, ticket_id))
+    update_data = {
+        'requires_approval': requires_approval
+    }
+    if auto_assigned_dept: update_data['category'] = auto_assigned_dept
+    if auto_priority: update_data['priority_level'] = auto_priority
+    if assigned_to: update_data['assigned_to'] = assigned_to
     
-    conn.commit()
+    ticket_ref.update(update_data)
     
     # 4. Trigger Notifications
     if requires_approval:
@@ -378,7 +343,7 @@ def run_automation_engine(ticket_id):
         create_notification(assigned_to, f"New ticket #{ticket_id} automatically assigned to you: {ticket['ticket_text'][:50]}...", "Assignment")
     
     # Notify requester via Dashboard
-    requester_msg = f"Your ticket #{ticket_id} has been processed and routed to {auto_assigned_dept or ticket['category']}."
+    requester_msg = f"Your ticket #{ticket_id} has been processed and routed to {auto_assigned_dept or ticket.get('category')}."
     create_notification(ticket['user_id'], requester_msg, "Update")
     
     # Notify requester via Email
@@ -389,7 +354,7 @@ def run_automation_engine(ticket_id):
         <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <h2 style="color: #2563eb;">Ticket Confirmation</h2>
             <p>Hi <strong>{ticket['username']}</strong>,</p>
-            <p>Your ticket has been received and assigned to the <strong>{auto_assigned_dept or ticket['category']}</strong> department.</p>
+            <p>Your ticket has been received and assigned to the <strong>{auto_assigned_dept or ticket.get('category')}</strong> department.</p>
             <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb; margin: 20px 0;">
                 <p style="margin: 0; font-size: 14px; color: #64748b;"><strong>Automated AI Response:</strong></p>
                 <p style="margin: 10px 0 0 0;">{ticket['response']}</p>
@@ -401,9 +366,8 @@ def run_automation_engine(ticket_id):
     </body>
     </html>
     """
-    send_email(ticket['email'], email_subject, email_body)
-
-    conn.close()
+    if ticket.get('email'):
+        send_email(ticket['email'], email_subject, email_body)
 
 # ---------------- AUTH ----------------
 def login_required(f):
@@ -531,71 +495,98 @@ def generate_response(categories, tone="Formal"):
 
 # ---------------- REPORT DATA HELPER ----------------
 def get_report_data(department=None, period_days=7):
-    conn = get_db()
-    cutoff = (datetime.now() - timedelta(days=period_days)).strftime('%Y-%m-%d')
-    prev_cutoff = (datetime.now() - timedelta(days=period_days * 2)).strftime('%Y-%m-%d')
-
-    base_filter = "created_at >= ?"
-    params = [cutoff]
-    prev_filter = "created_at >= ? AND created_at < ?"
-    prev_params = [prev_cutoff, cutoff]
+    if db is None: return {}
     
+    cutoff_date = datetime.now() - timedelta(days=period_days)
+    prev_cutoff_date = datetime.now() - timedelta(days=period_days * 2)
+
+    tickets_ref = db.collection('tickets')
+    
+    # Base query for current period
+    query = tickets_ref.where('created_at', '>=', cutoff_date)
     if department and department != "All":
-        base_filter += " AND category LIKE ?"
-        params.append(f"%{department}%")
-        prev_filter += " AND category LIKE ?"
-        prev_params.append(f"%{department}%")
+        query = query.where('category', '==', department)
+    
+    tickets_stream = list(query.stream())
+    
+    # Previous period for trend
+    prev_query = tickets_ref.where('created_at', '>=', prev_cutoff_date).where('created_at', '<', cutoff_date)
+    if department and department != "All":
+        prev_query = prev_query.where('category', '==', department)
+    prev_total = len(list(prev_query.stream()))
 
-    def q(sql, p): return conn.execute(sql, p).fetchone()[0]
+    total = len(tickets_stream)
+    resolved = 0
+    in_progress = 0
+    open_t = 0
+    unique_users = set()
+    dept_counts = {dept: {'total': 0, 'resolved': 0, 'open': 0} for dept in DEPARTMENTS}
+    tone_counts = {"Urgent": 0, "Friendly": 0, "Formal": 0}
+    
+    # We'll need to fetch previous period dept counts for surge detection
+    prev_dept_counts = {dept: 0 for dept in DEPARTMENTS}
+    prev_tickets_stream = list(prev_query.stream())
+    for doc in prev_tickets_stream:
+        data = doc.to_dict()
+        cat = data.get('category', '')
+        for dept in DEPARTMENTS:
+            if dept in cat:
+                prev_dept_counts[dept] += 1
 
-    total       = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter}", params)
-    prev_total  = q(f"SELECT COUNT(*) FROM tickets WHERE {prev_filter}", prev_params)
-    resolved    = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='Resolved'", params)
-    in_progress = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='In Progress'", params)
-    open_t      = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND status='Open'", params)
-    users_count = q(f"SELECT COUNT(DISTINCT user_id) FROM tickets WHERE {base_filter}", params)
+    for doc in tickets_stream:
+        data = doc.to_dict()
+        data['created_at'] = str(data.get('created_at', ''))
+        status = data.get('status')
+        if status == 'Resolved': resolved += 1
+        elif status == 'In Progress': in_progress += 1
+        elif status == 'Open': open_t += 1
+        
+        user_id = data.get('user_id')
+        if user_id: unique_users.add(user_id)
+        
+        cat = data.get('category', '')
+        for dept in DEPARTMENTS:
+            if dept in cat:
+                dept_counts[dept]['total'] += 1
+                if status == 'Resolved': dept_counts[dept]['resolved'] += 1
+                elif status == 'Open': dept_counts[dept]['open'] += 1
+        
+        tone = data.get('tone')
+        if tone in tone_counts:
+            tone_counts[tone] += 1
 
-    dept_breakdown = {}
+    # Surge detection
     surge_dept = None
     max_surge = 0
-
     for dept in DEPARTMENTS:
-        p2 = [cutoff, f"%{dept}%"]
-        p2_prev = [prev_cutoff, cutoff, f"%{dept}%"]
-
-        cur_d_total = q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ?", p2)
-        prev_d_total = q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND created_at < ? AND category LIKE ?", p2_prev)
-        
-        surge = cur_d_total - prev_d_total
+        surge = dept_counts[dept]['total'] - prev_dept_counts[dept]
         if surge > max_surge and surge > 0:
             max_surge = surge
             surge_dept = dept
 
-        dept_breakdown[dept] = {
-            "total":    cur_d_total,
-            "resolved": q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ? AND status='Resolved'", p2),
-            "open":     q("SELECT COUNT(*) FROM tickets WHERE created_at >= ? AND category LIKE ? AND status='Open'", p2),
-        }
+    # Recent tickets
+    recent_docs = sorted(tickets_stream, key=lambda x: x.to_dict().get('created_at', datetime.min), reverse=True)[:10]
+    recent = []
+    
+    users_cache = {}
+    def get_username(uid):
+        if not uid: return "N/A"
+        uid_str = str(uid)
+        if uid_str in users_cache: return users_cache[uid_str]
+        doc = db.collection('users').document(uid_str).get()
+        if doc.exists:
+            name = doc.to_dict().get('username', 'Unknown')
+            users_cache[uid_str] = name
+            return name
+        return "Unknown"
 
-    tone_data = {}
-    for tone in ["Urgent", "Friendly", "Formal"]:
-        p3 = params + [tone]
-        tone_data[tone] = q(f"SELECT COUNT(*) FROM tickets WHERE {base_filter} AND tone=?", p3)
+    for doc in recent_docs:
+        t_data = doc.to_dict()
+        t_data['id'] = doc.id
+        t_data['created_at'] = str(t_data.get('created_at', ''))
+        t_data['agent_name'] = get_username(t_data.get('assigned_to'))
+        recent.append(t_data)
 
-    recent = conn.execute(
-        f"""
-        SELECT t.id, t.ticket_text, t.category, t.tone, t.status, t.created_at, 
-               t.response, t.priority_level, t.requires_approval, t.is_approved,
-               a.username as agent_name
-        FROM tickets t
-        LEFT JOIN users a ON t.assigned_to = a.id
-        WHERE t.{base_filter} 
-        ORDER BY t.created_at DESC LIMIT 10
-        """,
-        params
-    ).fetchall()
-
-    conn.close()
     closure_rate = round((resolved / total * 100), 1) if total > 0 else 0
     
     # Predictive Mathematics
@@ -613,9 +604,9 @@ def get_report_data(department=None, period_days=7):
     return {
         "total": total, "resolved": resolved, "in_progress": in_progress,
         "open": open_t, "pending": open_t + in_progress,
-        "closure_rate": closure_rate, "users_count": users_count,
-        "dept_breakdown": dept_breakdown, "tone_data": tone_data,
-        "recent_tickets": [dict(r) for r in recent],
+        "closure_rate": closure_rate, "users_count": len(unique_users),
+        "dept_breakdown": dept_counts, "tone_data": tone_counts,
+        "recent_tickets": recent,
         "period_days": period_days, "department": department or "All",
         "generated_at": datetime.now().strftime("%d %B %Y, %H:%M"),
         "period_label": f"Last {period_days} days",
@@ -630,6 +621,11 @@ def get_report_data(department=None, period_days=7):
 # ROUTES
 # ================================================
 
+@app.before_request
+def normalize_session():
+    if 'user_id' in session:
+        session['user_id'] = str(session['user_id'])
+
 @app.route("/")
 def home():
     return redirect(url_for('login'))
@@ -642,16 +638,26 @@ def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-        conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        conn.close()
-        if user and check_password_hash(user["password"], password):
-            session['user_id'] = user["id"]
-            session['username'] = user["username"]
-            session['role'] = user["role"]
-            # Log login action
-            log_action("LOGIN", "users", user["id"], None, "User logged in", performer=user["username"])
-            return redirect(url_for('dashboard'))
+        
+        if db is None:
+            return "Firestore not initialized", 500
+
+        users_ref = db.collection('users')
+        user_query = users_ref.where('username', '==', username).limit(1).stream()
+        user_docs = list(user_query)
+        
+        if user_docs:
+            user_doc = user_docs[0]
+            user_data = user_doc.to_dict()
+            if check_password_hash(user_data["password"], password):
+                session['user_id'] = user_doc.id
+                session['username'] = user_data["username"]
+                session['role'] = user_data["role"]
+                # Log login action
+                log_action("LOGIN", "users", user_doc.id, None, "User logged in", performer=user_data["username"])
+                return redirect(url_for('dashboard'))
+            else:
+                error = "Invalid username or password"
         else:
             error = "Invalid username or password"
     return render_template("login.html", error=error, success=request.args.get("success"))
@@ -680,14 +686,28 @@ def register():
         if error:
             return render_template("register.html", error=error)
 
-        conn = get_db()
+        if db is None:
+            return "Firestore not initialized", 500
+
         try:
-            # Log registration action
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username,email,password,role) VALUES (?,?,?,?)",
-                         (username, email, generate_password_hash(password), "user"))
-            user_id = cursor.lastrowid
-            conn.commit()
+            users_ref = db.collection('users')
+            # Check if username or email already exists
+            username_exists = list(users_ref.where('username', '==', username).limit(1).stream())
+            email_exists = list(users_ref.where('email', '==', email).limit(1).stream())
+            
+            if username_exists or email_exists:
+                return render_template("register.html", error="Username or Email already exists.")
+
+            new_user = {
+                'username': username,
+                'email': email,
+                'password': generate_password_hash(password),
+                'role': 'user',
+                'created_at': firestore.SERVER_TIMESTAMP
+            }
+            _, user_ref = users_ref.add(new_user)
+            user_id = user_ref.id
+            
             log_action("INSERT", "users", user_id, None, "New user registered", performer=username)
             
             # Send welcome email
@@ -696,10 +716,8 @@ def register():
             send_trigger_email(email, subject, message)
         except Exception as e:
             print(f"Registration error: {e}")
-            conn.close()
-            return render_template("register.html", error="Username or Email already exists.")
+            return render_template("register.html", error="Registration failed. Please try again.")
         
-        conn.close()
         return redirect(url_for('login', success="Account created successfully!"))
     return render_template("register.html")
 
@@ -710,30 +728,56 @@ def dashboard():
     status_filter = request.args.get('status', '')
     category_filter = request.args.get('category', '')
     
-    conn = get_db()
-    query = """
-        SELECT t.*, u.username as sender_name, a.username as agent_name
-        FROM tickets t 
-        JOIN users u ON t.user_id = u.id 
-        LEFT JOIN users a ON t.assigned_to = a.id
-        WHERE 1=1
-    """
-    params = []
+    if db is None:
+        return "Firestore not initialized", 500
+
+    tickets_ref = db.collection('tickets')
+    query = tickets_ref
     
-    if search:
-        query += " AND (t.ticket_text LIKE ? OR u.username LIKE ? OR t.id LIKE ?)"
-        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
     if status_filter:
-        query += " AND t.status = ?"
-        params.append(status_filter)
+        query = query.where('status', '==', status_filter)
     if category_filter:
-        query += " AND t.category LIKE ?"
-        params.append(f'%{category_filter}%')
+        query = query.where('category', '==', category_filter)
         
-    query += " ORDER BY t.created_at DESC"
-    tickets = conn.execute(query, params).fetchall()
+    # Firestore doesn't support easy 'LIKE' queries for middle of string.
+    # We will fetch and filter in memory if search is provided, or just use prefix search if possible.
+    # For now, let's fetch all (filtered by status/category) and filter in memory for search.
     
-    conn.close()
+    tickets_stream = query.order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+    tickets = []
+    
+    # Cache for users to avoid redundant fetches
+    users_cache = {}
+    
+    def get_username(uid):
+        if not uid: return "N/A"
+        uid_str = str(uid)
+        if uid_str in users_cache: return users_cache[uid_str]
+        user_doc = db.collection('users').document(uid_str).get()
+        if user_doc.exists:
+            name = user_doc.to_dict().get('username', 'Unknown')
+            users_cache[uid_str] = name
+            return name
+        return "Unknown"
+
+    for doc in tickets_stream:
+        t_data = doc.to_dict()
+        t_data['id'] = doc.id
+        t_data['created_at'] = str(t_data.get('created_at', ''))
+        
+        # Filter by search in memory
+        if search:
+            search_lower = search.lower()
+            text_match = search_lower in t_data.get('ticket_text', '').lower()
+            id_match = search_lower in t_data['id'].lower()
+            # We'd need to check sender name too, but that requires fetching it first
+            if not (text_match or id_match):
+                continue
+        
+        t_data['sender_name'] = get_username(str(t_data.get('user_id')))
+        t_data['agent_name'] = get_username(str(t_data.get('assigned_to')))
+        tickets.append(t_data)
+    
     return render_template("dashboard.html", tickets=tickets, all_departments=DEPARTMENTS, 
                            search=search, status_filter=status_filter, category_filter=category_filter)
 
@@ -769,7 +813,7 @@ def submit():
         'category': ",".join(categories),
         'tone': tone,
         'response': response,
-        'user_id': session['user_id'],
+        'user_id': str(session['user_id']),
         'risk_level': risk,
         'bias_flag': bias,
         'transparency_note': transparency_note,
@@ -796,15 +840,34 @@ def confirm_assignment():
         draft['category'] = ",".join(selected_depts)
         draft['response'] = generate_response(selected_depts)
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO tickets (ticket_text, category, tone, response, user_id, status, risk_level, bias_flag, transparency_note, attachment_path) 
-        VALUES (?,?,?,?,?,?,?,?,?,?)
-    """, (draft['ticket_text'], draft['category'], draft['tone'], draft['response'], draft['user_id'], "Open", draft.get('risk_level', 'Low - Standard'), draft.get('bias_flag', 'No'), draft.get('transparency_note', ''), draft.get('attachment_path')))
-    ticket_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    if db is None:
+        return "Firestore not initialized", 500
+
+    # Add to Firestore
+    new_ticket = {
+        'ticket_text': draft['ticket_text'],
+        'category': draft['category'],
+        'tone': draft['tone'],
+        'response': draft['response'],
+        'user_id': str(draft['user_id']),
+        'status': 'Open',
+        'risk_level': draft.get('risk_level', 'Low - Standard'),
+        'bias_flag': draft.get('bias_flag', 'No'),
+        'transparency_note': draft.get('transparency_note', ''),
+        'attachment_path': draft.get('attachment_path'),
+        'created_at': firestore.SERVER_TIMESTAMP
+    }
+    # Get numeric ID
+    try:
+        new_id = get_next_id('tickets')
+        ticket_id = str(new_id)
+    except Exception as e:
+        print(f"Counter error: {e}")
+        # Fallback to random ID if counter fails
+        import secrets
+        ticket_id = secrets.token_hex(4)
+
+    db.collection('tickets').document(ticket_id).set(new_ticket)
     
     log_action("INSERT", "tickets", ticket_id, None, draft['ticket_text'])
     
@@ -812,54 +875,65 @@ def confirm_assignment():
     run_automation_engine(ticket_id)
     
     # Week 7: Notify all admins of global submission
-    admins = get_db().execute("SELECT id FROM users WHERE role='admin'").fetchall()
-    for admin in admins:
-        create_notification(admin['id'], f"New ticket #{ticket_id} submitted by {session['username']}.", "Global")
+    admins_query = db.collection('users').where('role', '==', 'admin').stream()
+    for admin_doc in admins_query:
+        create_notification(admin_doc.id, f"New ticket #{ticket_id} submitted by {session['username']}.", "Global")
 
     # Trigger the new premium success modal
     session['show_success_modal'] = True
+    return redirect(url_for('dashboard'))
     return redirect(url_for('dashboard'))
 
 @app.route("/notifications")
 @login_required
 def notifications():
-    conn = get_db()
+    if db is None: return "Firestore not initialized", 500
+    
     if session['role'] == 'admin':
         # Admins only see critical Global alerts (New Submissions & Deletions)
-        notifications = conn.execute("""
-            SELECT n.*, u.username as target_user 
-            FROM notifications n
-            JOIN users u ON n.user_id = u.id
-            WHERE n.type IN ('Global', 'Chat')
-            ORDER BY n.created_at DESC
-        """).fetchall()
+        notif_stream = db.collection('notifications').where('type', 'in', ['Global', 'Chat']).order_by('created_at', direction=firestore.Query.DESCENDING).stream()
     else:
-        notifications = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC", (session['user_id'],)).fetchall()
+        notif_stream = db.collection('notifications').where('user_id', '==', session['user_id']).order_by('created_at', direction=firestore.Query.DESCENDING).stream()
     
-    # Mark as read
-    conn.execute("UPDATE notifications SET is_read=1 WHERE user_id=?", (session['user_id'],))
-    conn.commit()
-    conn.close()
+    notifications = []
+    for doc in notif_stream:
+        n_data = doc.to_dict()
+        n_data['id'] = doc.id
+        # Fetch target_user for admin view
+        if session['role'] == 'admin' and n_data.get('user_id'):
+            user_doc = db.collection('users').document(n_data['user_id']).get()
+            if user_doc.exists:
+                n_data['target_user'] = user_doc.to_dict().get('username')
+        notifications.append(n_data)
+    
+    # Mark as read (Firestore doesn't have UPDATE WHERE, so we iterate)
+    # Optimization: only update unread ones
+    unread_stream = db.collection('notifications').where('user_id', '==', session['user_id']).where('is_read', '==', 0).stream()
+    batch = db.batch()
+    for doc in unread_stream:
+        batch.update(doc.reference, {'is_read': 1})
+    batch.commit()
+    
     return render_template("notifications.html", notifications=notifications)
 
-@app.route("/approve_ticket/<int:ticket_id>", methods=["POST"])
+@app.route("/approve_ticket/<string:ticket_id>", methods=["POST"])
 @login_required
 def approve_ticket(ticket_id):
     if session.get('role', '').lower() != 'admin':
         return "Unauthorized", 403
-        
-    conn = get_db()
-    ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
-    if ticket:
-        conn.execute("UPDATE tickets SET is_approved=1, status='In Progress' WHERE id=?", (ticket_id,))
-        conn.commit()
-        log_action("APPROVE", "tickets", ticket_id, "Pending Approval", "Approved")
-        create_notification(ticket['user_id'], f"Your ticket #{ticket_id} has been approved and is now in progress.", "Approval")
     
-    conn.close()
+    if db is None: return "Firestore not initialized", 500
+
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    ticket_snap = ticket_ref.get()
+    if ticket_snap.exists:
+        ticket_ref.update({'is_approved': 1, 'status': 'In Progress'})
+        log_action("APPROVE", "tickets", ticket_id, "Pending Approval", "Approved")
+        create_notification(ticket_snap.to_dict().get('user_id'), f"Your ticket #{ticket_id} has been approved and is now in progress.", "Approval")
+    
     return redirect(request.referrer or url_for('dashboard'))
 
-@app.route("/update_assignment/<int:ticket_id>", methods=["POST"])
+@app.route("/update_assignment/<string:ticket_id>", methods=["POST"])
 @login_required
 def update_assignment(ticket_id):
     selected_depts = request.form.getlist("departments")
@@ -869,60 +943,56 @@ def update_assignment(ticket_id):
     category_str = ",".join(selected_depts)
     new_response = generate_response(selected_depts)
     
-    conn = get_db()
-    old_ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    if db is None: return "Firestore not initialized", 500
+
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    old_ticket_snap = ticket_ref.get()
     
-    if old_ticket:
+    if old_ticket_snap.exists:
+        old_ticket = old_ticket_snap.to_dict()
         # Check permissions: owner or admin
-        if session.get('role', '').lower() == 'admin' or old_ticket['user_id'] == session.get('user_id'):
-            log_action("UPDATE", "tickets", ticket_id, dict(old_ticket), {"category": category_str, "response": new_response})
-            conn.execute("UPDATE tickets SET category=?, response=? WHERE id=?", (category_str, new_response, ticket_id))
-            conn.commit()
+        if session.get('role', '').lower() == 'admin' or old_ticket.get('user_id') == session.get('user_id'):
+            log_action("UPDATE", "tickets", ticket_id, old_ticket, {"category": category_str, "response": new_response})
+            ticket_ref.update({"category": category_str, "response": new_response})
     
-    conn.close()
     return redirect(url_for('dashboard'))
 
-@app.route("/delete_ticket/<int:ticket_id>", methods=["POST"])
+@app.route("/delete_ticket/<string:ticket_id>", methods=["POST"])
 @login_required
 def delete_ticket(ticket_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,))
-    ticket = cursor.fetchone()
+    if db is None: return "Firestore not initialized", 500
+
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    ticket_snap = ticket_ref.get()
     
-    if not ticket:
-        conn.close()
+    if not ticket_snap.exists:
         return "Ticket not found", 404
-        
+    
+    ticket = ticket_snap.to_dict()
     user_role = str(session.get('role', '')).lower()
     session_user_id = str(session.get('user_id', ''))
-    ticket_owner_id = str(ticket['user_id'])
+    ticket_owner_id = str(ticket.get('user_id'))
     
     try:
         if user_role == 'admin' or session_user_id == ticket_owner_id:
-            log_action("DELETE", "tickets", ticket_id, dict(ticket), None)
-            conn.execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
-            conn.commit()
+            log_action("DELETE", "tickets", ticket_id, ticket, None)
+            ticket_ref.delete()
             
             # Week 7: Notify all admins of deletion
-            admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
-            for admin in admins:
-                create_notification(admin['id'], f"Ticket #{ticket_id} was deleted by {session.get('username', 'Unknown')}.", "Global")
+            admins_stream = db.collection('users').where('role', '==', 'admin').stream()
+            for admin_doc in admins_stream:
+                create_notification(admin_doc.id, f"Ticket #{ticket_id} was deleted by {session.get('username', 'Unknown')}.", "Global")
         else:
-            conn.close()
             return f"Unauthorized: User {session_user_id} cannot delete ticket owned by {ticket_owner_id}", 403
             
-        conn.close()
         session['show_delete_modal'] = True
         return redirect(request.referrer or url_for('dashboard'))
     except Exception as e:
         with open("error_log.txt", "a") as f:
             f.write(f"DELETE ERROR: {str(e)}\n")
-        if conn:
-            conn.close()
         return f"Internal Server Error: {str(e)}", 500
 
-@app.route("/update_status/<int:ticket_id>", methods=["POST"])
+@app.route("/update_status/<string:ticket_id>", methods=["POST"])
 @login_required
 def update_status(ticket_id):
     if session.get('role', '').lower() != 'admin':
@@ -931,33 +1001,34 @@ def update_status(ticket_id):
     new_status = request.form.get("status")
     new_category = request.form.get("category")
     
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,))
-    old = cursor.fetchone()
+    if db is None: return "Firestore not initialized", 500
+
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    old_snap = ticket_ref.get()
     
-    if old:
+    if old_snap.exists:
+        old = old_snap.to_dict()
         # Only update and log if something actually changed
-        if new_status != old['status'] or (new_category and new_category != old['category']):
-            cursor.execute("UPDATE tickets SET status=?, category=COALESCE(?, category) WHERE id=?", (new_status, new_category, ticket_id))
-            conn.commit()
-            log_action("UPDATE", "tickets", ticket_id, old['status'], new_status)
+        if new_status != old.get('status') or (new_category and new_category != old.get('category')):
+            update_data = {'status': new_status}
+            if new_category: update_data['category'] = new_category
+            ticket_ref.update(update_data)
+            log_action("UPDATE", "tickets", ticket_id, old.get('status'), new_status)
             
             # Notify user of changes
             msg = f"Ticket #{ticket_id} updated: Status is now '{new_status}'"
-            if new_category and new_category != old['category']:
+            if new_category and new_category != old.get('category'):
                 msg += f" and routed to '{new_category}'"
-            create_notification(old['user_id'], msg, "Update")
+            create_notification(old.get('user_id'), msg, "Update")
     
-    conn.close()
     return redirect(url_for('dashboard'))
 
 @app.route("/audit")
 @login_required
 def audit():
-    conn = get_db()
-    logs = conn.execute("SELECT * FROM audit_log ORDER BY timestamp DESC").fetchall()
-    conn.close()
+    if db is None: return "Firestore not initialized", 500
+    logs_stream = db.collection('audit_log').order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+    logs = [doc.to_dict() for doc in logs_stream]
     return render_template("audit.html", logs=logs)
 
 @app.route("/view")
@@ -967,63 +1038,81 @@ def view():
     status_filter = request.args.get('status', '')
     category_filter = request.args.get('category', '')
 
-    conn = get_db()
-    query = """
-        SELECT t.*, u.username as sender_name, a.username as agent_name
-        FROM tickets t 
-        JOIN users u ON t.user_id = u.id 
-        LEFT JOIN users a ON t.assigned_to = a.id
-        WHERE 1=1
-    """
-    params = []
+    if db is None: return "Firestore not initialized", 500
+
+    tickets_ref = db.collection('tickets')
+    query = tickets_ref
     
     if session.get('role') != 'admin':
-        query += " AND t.user_id = ?"
-        params.append(session.get('user_id'))
+        query = query.where('user_id', '==', session.get('user_id'))
         
-    if search:
-        query += " AND (t.ticket_text LIKE ? OR t.id LIKE ?)"
-        params.extend([f'%{search}%', f'%{search}%'])
     if status_filter:
-        query += " AND t.status = ?"
-        params.append(status_filter)
+        query = query.where('status', '==', status_filter)
     if category_filter:
-        query += " AND t.category LIKE ?"
-        params.append(f'%{category_filter}%')
+        query = query.where('category', '==', category_filter)
 
-    query += " ORDER BY t.created_at DESC"
-    tickets = conn.execute(query, params).fetchall()
+    tickets_stream = query.order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+    tickets = []
+    
+    users_cache = {}
+    def get_username(uid):
+        if not uid: return "N/A"
+        uid_str = str(uid)
+        if uid_str in users_cache: return users_cache[uid_str]
+        user_doc = db.collection('users').document(uid_str).get()
+        if user_doc.exists:
+            name = user_doc.to_dict().get('username', 'Unknown')
+            users_cache[uid_str] = name
+            return name
+        return "Unknown"
 
-    conn.close()
+    for doc in tickets_stream:
+        t_data = doc.to_dict()
+        t_data['id'] = doc.id
+        t_data['created_at'] = str(t_data.get('created_at', ''))
+        
+        if search:
+            search_lower = search.lower()
+            if not (search_lower in t_data.get('ticket_text', '').lower() or search_lower in t_data['id'].lower()):
+                continue
+                
+        t_data['sender_name'] = get_username(str(t_data.get('user_id')))
+        t_data['agent_name'] = get_username(str(t_data.get('assigned_to')))
+        tickets.append(t_data)
+
     return render_template("view.html", tickets=tickets, 
                            search=search, status_filter=status_filter, category_filter=category_filter)
 
 
 
-@app.route("/chat/<int:ticket_id>", methods=["GET", "POST"])
+@app.route("/chat/<string:ticket_id>", methods=["GET", "POST"])
 @login_required
 def chat(ticket_id):
-    conn = get_db()
-    # Fetch ticket along with requester name
-    ticket = conn.execute("""
-        SELECT t.*, u.username as requester_name 
-        FROM tickets t 
-        JOIN users u ON t.user_id = u.id 
-        WHERE t.id = ?
-    """, (ticket_id,)).fetchone()
+    if db is None: return "Firestore not initialized", 500
+
+    # Fetch ticket
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    ticket_snap = ticket_ref.get()
     
-    if not ticket:
-        conn.close()
+    if not ticket_snap.exists:
         return "Ticket not found", 404
+    
+    ticket = ticket_snap.to_dict()
+    ticket['id'] = ticket_snap.id
+
+    # Fetch requester name separately
+    user_doc = db.collection('users').document(str(ticket['user_id'])).get()
+    if user_doc.exists:
+        ticket['requester_name'] = user_doc.to_dict().get('username')
+    else:
+        ticket['requester_name'] = "Unknown"
     
     # Permissions: Admin can see all, Users can only see their own tickets
     if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
-        conn.close()
         return "Unauthorized", 403
         
     # Approval Lock: Both admin and user must wait for approval before chatting
-    if ticket['requires_approval'] == 1 and ticket['is_approved'] == 0:
-        conn.close()
+    if ticket.get('requires_approval') == 1 and ticket.get('is_approved') == 0:
         return "Discussion is locked until this ticket is formally approved by an administrator.", 403
         
     if request.method == "POST":
@@ -1044,9 +1133,13 @@ def chat(ticket_id):
                 attachment_filename = f"user_{user_id}/{filename}"
 
         if message_text or attachment_filename:
-            conn.execute("INSERT INTO ticket_messages (ticket_id, user_id, message, attachment_path) VALUES (?, ?, ?, ?)",
-                         (ticket_id, session['user_id'], message_text, attachment_filename))
-            conn.commit()
+            db.collection('ticket_messages').add({
+                'ticket_id': ticket_id,
+                'user_id': session['user_id'],
+                'message': message_text,
+                'attachment_path': attachment_filename,
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
             
             # Smart Notifications
             if session.get('role') == 'admin':
@@ -1055,48 +1148,61 @@ def chat(ticket_id):
             else:
                 # Notify all admins with the user's name for clarity
                 user_name = session.get('username', 'User')
-                admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
-                for admin in admins:
-                    create_notification(admin['id'], f"User {user_name} responded to Ticket #{ticket_id} discussion.", "Chat")
+                admins_stream = db.collection('users').where('role', '==', 'admin').stream()
+                for admin_doc in admins_stream:
+                    create_notification(admin_doc.id, f"User {user_name} responded to Ticket #{ticket_id} discussion.", "Chat")
                     
-    messages = conn.execute("""
-        SELECT m.*, u.username, u.role as user_role
-        FROM ticket_messages m 
-        JOIN users u ON m.user_id = u.id 
-        WHERE m.ticket_id = ? 
-        ORDER BY m.timestamp ASC
-    """, (ticket_id,)).fetchall()
+    # Fetch messages
+    msg_stream = db.collection('ticket_messages').where('ticket_id', '==', ticket_id).order_by('timestamp', direction=firestore.Query.ASCENDING).stream()
+    messages = []
     
-    conn.close()
+    users_cache = {}
+    def get_user_info(uid):
+        uid_str = str(uid)
+        if uid_str in users_cache: return users_cache[uid_str]
+        doc = db.collection('users').document(uid_str).get()
+        if doc.exists:
+            info = doc.to_dict()
+            users_cache[uid_str] = info
+            return info
+        return {}
+
+    for doc in msg_stream:
+        m_data = doc.to_dict()
+        m_data['timestamp'] = str(m_data.get('timestamp', ''))
+        user_info = get_user_info(m_data.get('user_id'))
+        m_data['username'] = user_info.get('username', 'Unknown')
+        m_data['user_role'] = user_info.get('role', 'user')
+        messages.append(m_data)
+    
     return render_template("chat.html", ticket=ticket, messages=messages)
 
-@app.route("/end_chat/<int:ticket_id>", methods=["POST"])
+@app.route("/end_chat/<string:ticket_id>", methods=["POST"])
 @login_required
 def end_chat(ticket_id):
-    conn = get_db()
-    ticket = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
-    if not ticket:
-        conn.close()
+    if db is None: return "Firestore not initialized", 500
+
+    ticket_ref = db.collection('tickets').document(ticket_id)
+    ticket_snap = ticket_ref.get()
+    if not ticket_snap.exists:
         return "Ticket not found", 404
-        
+    
+    ticket = ticket_snap.to_dict()
     # Only admin or ticket owner can end chat
-    if session.get('role') != 'admin' and ticket['user_id'] != session.get('user_id'):
-        conn.close()
+    if session.get('role') != 'admin' and ticket.get('user_id') != session.get('user_id'):
         return "Unauthorized", 403
         
-    conn.execute("UPDATE tickets SET status='Resolved' WHERE id=?", (ticket_id,))
-    conn.commit()
-    log_action("UPDATE", "tickets", ticket_id, ticket['status'], 'Resolved', performer=session['username'])
+    ticket_ref.update({'status': 'Resolved'})
+    log_action("UPDATE", "tickets", ticket_id, ticket.get('status'), 'Resolved', performer=session['username'])
     
     # Notify other party
     if session.get('role') == 'admin':
-        create_notification(ticket['user_id'], f"Admin has marked Ticket #{ticket_id} as resolved and ended the discussion.", "Chat")
+        create_notification(ticket.get('user_id'), f"Admin has marked Ticket #{ticket_id} as resolved and ended the discussion.", "Chat")
     else:
-        admins = conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()
-        for admin in admins:
-            create_notification(admin['id'], f"User {session['username']} marked Ticket #{ticket_id} as resolved.", "Chat")
+        admins_stream = db.collection('users').where('role', '==', 'admin').stream()
+        for admin_doc in admins_stream:
+            create_notification(admin_doc.id, f"User {session['username']} marked Ticket #{ticket_id} as resolved.", "Chat")
             
-    conn.close()
     return redirect(url_for('dashboard') if session['role'] == 'admin' else url_for('view'))
 
 
@@ -1111,7 +1217,7 @@ def uploaded_file(filename):
             # Extract user_id from path 'user_ID/filename'
             path_parts = filename.split('/')
             if len(path_parts) > 0 and path_parts[0].startswith('user_'):
-                owner_id = int(path_parts[0].replace('user_', ''))
+                owner_id = path_parts[0].replace('user_', '')
                 if owner_id != session.get('user_id'):
                     return "Unauthorized", 403
             else:
@@ -1161,9 +1267,13 @@ def report():
 @app.route("/api/unread_notifications")
 @login_required
 def api_unread_notifications():
-    conn = get_db()
-    count = conn.execute("SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0", (session['user_id'],)).fetchone()[0]
-    conn.close()
+    if db is None: return jsonify({"count": 0})
+    query = db.collection('notifications').where('user_id', '==', session['user_id']).where('is_read', '==', 0)
+    # Using aggregation query if supported, otherwise count stream
+    try:
+        count = query.count().get()[0][0].value
+    except:
+        count = len(list(query.stream()))
     return jsonify({"count": count})
 
 # ---------------- DOWNLOAD CSV ----------------
@@ -1222,20 +1332,20 @@ def download_csv():
     writer.writerow(['SECTION 4: DETAILED OPERATIONAL LOG'])
     writer.writerow(['Ticket ID', 'Status', 'Department', 'Tone', 'Priority', 'Timestamp', 'Subject Preview'])
     
-    cutoff = (datetime.now() - timedelta(days=period_days)).strftime('%Y-%m-%d %H:%M:%S')
-    conn = get_db()
-    sql = "SELECT id, status, category, tone, priority_level, created_at, ticket_text FROM tickets WHERE created_at >= ?"
-    params = [cutoff]
-    if department != "All":
-        sql += " AND category LIKE ?"
-        params.append(f"%{department}%")
-    sql += " ORDER BY created_at DESC"
-    tickets = conn.execute(sql, params).fetchall()
-    conn.close()
+    cutoff_date = datetime.now() - timedelta(days=period_days)
+    if db is None: return "Firestore not initialized", 500
 
-    for t in tickets:
-        preview = t['ticket_text'][:80].replace('\n', ' ') + '...' if len(t['ticket_text']) > 80 else t['ticket_text']
-        writer.writerow([t['id'], t['status'], t['category'], t['tone'], t['priority_level'], t['created_at'], preview])
+    tickets_ref = db.collection('tickets').where('created_at', '>=', cutoff_date)
+    if department != "All":
+        tickets_ref = tickets_ref.where('category', '==', department)
+    
+    tickets_stream = tickets_ref.order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+
+    for doc in tickets_stream:
+        t = doc.to_dict()
+        t['id'] = doc.id
+        preview = t.get('ticket_text', '')[:80].replace('\n', ' ') + '...' if len(t.get('ticket_text', '')) > 80 else t.get('ticket_text', '')
+        writer.writerow([t['id'], t.get('status'), t.get('category'), t.get('tone'), t.get('priority_level'), t.get('created_at'), preview])
     
     writer.writerow([])
     writer.writerow(['*** CONFIDENTIAL: SMARTIES SYSTEM INTERNAL REPORT ***'])
@@ -1531,12 +1641,15 @@ def forgot_password():
     if request.method == "POST":
         username = request.form["username"]
         email = request.form["email"]
-        conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE username=? AND email=?", (username, email)).fetchone()
-        conn.close()
         
-        if user:
-            session['reset_user_id'] = user['id']
+        if db is None: return "Firestore not initialized", 500
+
+        users_ref = db.collection('users')
+        user_query = users_ref.where('username', '==', username).where('email', '==', email).limit(1).stream()
+        user_docs = list(user_query)
+        
+        if user_docs:
+            session['reset_user_id'] = user_docs[0].id
             return redirect(url_for('reset_password'))
         else:
             return render_template("forgot_password.html", error="Identity verification failed. Please check your credentials.")
@@ -1558,60 +1671,57 @@ def reset_password():
         user_id = session.pop('reset_user_id')
         hashed_pw = generate_password_hash(new_password)
         
-        conn = get_db()
-        # Fetch username and email before logging
-        user = conn.execute("SELECT username, email FROM users WHERE id=?", (user_id,)).fetchone()
-        username = user['username'] if user else "Unknown"
-        email = user['email'] if user else None
-        
-        conn.execute("UPDATE users SET password=? WHERE id=?", (hashed_pw, user_id))
-        conn.commit()
-        conn.close()
-        
-        log_action("UPDATE", "users", user_id, "PASSWORD_RESET", "NEW_PASSWORD_SET", performer=f"{username} (Self-Reset)")
-        
-        # Send notification email
-        if email:
-            subject = "Smarties Security Alert: Password Changed"
-            message = f"Hello {username},\n\nThis is a notification to confirm that your password for the Smarties Ticket System has been successfully changed.\n\nIf you did not make this change, please contact an administrator immediately.\n\nBest regards,\nSmarties Security Team"
-            send_trigger_email(email, subject, message)
+        if db is None: return "Firestore not initialized", 500
+
+        user_ref = db.collection('users').document(user_id)
+        user_snap = user_ref.get()
+        if user_snap.exists:
+            user_data = user_snap.to_dict()
+            username = user_data.get('username', 'Unknown')
+            email = user_data.get('email')
+            
+            user_ref.update({'password': hashed_pw})
+            log_action("UPDATE", "users", user_id, "PASSWORD_RESET", "NEW_PASSWORD_SET", performer=f"{username} (Self-Reset)")
+            
+            # Send notification email
+            if email:
+                subject = "Smarties Security Alert: Password Changed"
+                message = f"Hello {username},\n\nThis is a notification to confirm that your password for the Smarties Ticket System has been successfully changed.\n\nIf you did not make this change, please contact an administrator immediately.\n\nBest regards,\nSmarties Security Team"
+                send_trigger_email(email, subject, message)
             
         return redirect(url_for('login', success="Password reset successful! Please log in."))
         
     return render_template("reset_password.html")
 
-@app.route("/restore_ticket/<int:log_id>", methods=["POST"])
+@app.route("/restore_ticket/<string:log_id>", methods=["POST"])
 @login_required
 def restore_ticket(log_id):
     if session.get('role', '').lower() != 'admin':
         return "Unauthorized", 403
-        
-    conn = get_db()
-    log = conn.execute("SELECT * FROM audit_log WHERE id=?", (log_id,)).fetchone()
     
-    if log and log['action'] == 'DELETE' and log['table_name'] == 'tickets':
-        try:
-            # Parse the old_value string back to a dict
-            data = ast.literal_eval(log['old_value'])
-            
-            # Insert back into tickets
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO tickets (ticket_text, user_id, status, category, response, created_at, tone)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (data['ticket_text'], data['user_id'], data['status'], 
-                  data['category'], data['response'], data['created_at'], data['tone']))
-            
-            new_id = cursor.lastrowid
-            conn.commit()
-            
-            # Log the restoration
-            log_action("RESTORE", "tickets", new_id, None, f"Restored from Log #{log_id}")
-            
-        except Exception as e:
-            print(f"Restore error: {e}")
-            
-    conn.close()
+    if db is None: return "Firestore not initialized", 500
+
+    log_ref = db.collection('audit_log').document(log_id)
+    log_snap = log_ref.get()
+    
+    if log_snap.exists:
+        log = log_snap.to_dict()
+        if log.get('action') == 'DELETE' and log.get('table_name') == 'tickets':
+            try:
+                # Parse the old_value string back to a dict
+                data = ast.literal_eval(log['old_value'])
+                
+                # Insert back into tickets
+                # Convert back to Firestore types if needed (e.g. server timestamp)
+                # But here we just use the stored values
+                _, new_ref = db.collection('tickets').add(data)
+                
+                # Log the restoration
+                log_action("RESTORE", "tickets", new_ref.id, None, f"Restored from Log #{log_id}")
+                
+            except Exception as e:
+                print(f"Restore error: {e}")
+                
     return redirect(url_for('audit'))
 
 @app.route("/logout")
@@ -1625,18 +1735,34 @@ def compliance():
     if session.get('role', '').lower() != 'admin':
         return "Unauthorized: Requires Administrator or Compliance Officer privileges.", 403
     
-    conn = get_db()
+    if db is None: return "Firestore not initialized", 500
+
     try:
-        tickets = conn.execute("""
-            SELECT t.*, u.username as sender_name 
-            FROM tickets t 
-            JOIN users u ON t.user_id = u.id 
-            ORDER BY t.created_at DESC
-        """).fetchall()
+        tickets_stream = db.collection('tickets').order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+        tickets = []
+        
+        users_cache = {}
+        def get_username(uid):
+            if not uid: return "N/A"
+            uid_str = str(uid)
+            if uid_str in users_cache: return users_cache[uid_str]
+            doc = db.collection('users').document(uid_str).get()
+            if doc.exists:
+                name = doc.to_dict().get('username', 'Unknown')
+                users_cache[uid_str] = name
+                return name
+            return "Unknown"
+
+        for doc in tickets_stream:
+            t_data = doc.to_dict()
+            t_data['id'] = doc.id
+            t_data['created_at'] = str(t_data.get('created_at', ''))
+            t_data['sender_name'] = get_username(str(t_data.get('user_id')))
+            tickets.append(t_data)
     except Exception as e:
+        print(f"Compliance error: {e}")
         tickets = []
     
-    conn.close()
     return render_template("compliance.html", tickets=tickets)
 
 @app.route("/download_compliance")
@@ -1645,12 +1771,32 @@ def download_compliance():
     if session.get('role', '').lower() != 'admin':
         return "Unauthorized", 403
         
-    conn = get_db()
+    if db is None: return "Firestore not initialized", 500
+
     try:
-        tickets = conn.execute("SELECT t.*, u.username as sender_name FROM tickets t JOIN users u ON t.user_id = u.id ORDER BY t.created_at DESC").fetchall()
+        tickets_stream = db.collection('tickets').order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+        tickets = []
+        
+        users_cache = {}
+        def get_username(uid):
+            if not uid: return "N/A"
+            uid_str = str(uid)
+            if uid_str in users_cache: return users_cache[uid_str]
+            doc = db.collection('users').document(uid_str).get()
+            if doc.exists:
+                name = doc.to_dict().get('username', 'Unknown')
+                users_cache[uid_str] = name
+                return name
+            return "Unknown"
+
+        for doc in tickets_stream:
+            t_data = doc.to_dict()
+            t_data['id'] = doc.id
+            t_data['created_at'] = str(t_data.get('created_at', ''))
+            t_data['sender_name'] = get_username(str(t_data.get('user_id')))
+            tickets.append(t_data)
     except:
         tickets = []
-    conn.close()
     
     if not REPORTLAB_AVAILABLE:
         # Fallback to CSV if reportlab missing

@@ -8,3 +8,5 @@ tickets.db
 .env
 .vscode/
 scratch/
+serviceAccountKey.json
+app_sqlite_backup.py
